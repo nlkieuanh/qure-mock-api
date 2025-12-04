@@ -1,16 +1,25 @@
-import ads from "../data/ads.json";
+import fs from "fs";
+import path from "path";
 
 export default function handler(req, res) {
-  const { searchParams } = new URL(req.url, "http://localhost");
-  const platform = searchParams.get("platform");
+  try {
+    const filePath = path.join(process.cwd(), "data", "ads.json");
+    const json = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
-  let result = ads;
+    const { searchParams } = new URL(req.url, "http://localhost");
+    const platform = searchParams.get("platform");
 
-  if (platform) {
-    result = result.filter(item => item.platform === platform);
+    let result = json;
+
+    if (platform) {
+      result = result.filter(item => item.platform === platform);
+    }
+
+    res.setHeader("Content-Type", "application/json");
+    return res.status(200).json(result);
+
+  } catch (err) {
+    console.error("API ERROR:", err);
+    return res.status(500).json({ error: err.message });
   }
-
-  res.setHeader("Content-Type", "application/json");
-  res.statusCode = 200;
-  res.end(JSON.stringify(result));
 }
