@@ -1,4 +1,4 @@
-import ads from "../data/ads.json" assert { type: "json" };
+import ads from "../data/ads.json";
 
 export default function handler(req, res) {
   const { searchParams } = new URL(req.url, "http://localhost");
