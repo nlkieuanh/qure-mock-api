@@ -37,3 +37,49 @@ export default function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+  var card = document.querySelector('.card-block-wrap.product-combination-card');
+  if (!card) return;
+
+  var tableWrapper = card.querySelector('.adv-channel-table-wrapper');
+  if (!tableWrapper) return;
+
+  var apiUrl = 'https://qure-mock-api.vercel.app/api/products';
+
+  fetch(apiUrl)
+    .then(function (response) {
+      return response.json();
+    })
+    .then(function (data) {
+      var products = (data && data.products) ? data.products : [];
+
+      var html = ''
+        + '<table class="adv-channel-table">'
+        + '  <thead>'
+        + '    <tr>'
+        + '      <th>Product</th>'
+        + '      <th>Ads</th>'
+        + '      <th>Spend</th>'
+        + '      <th>Impressions</th>'
+        + '    </tr>'
+        + '  </thead>'
+        + '  <tbody>';
+
+      products.forEach(function (item) {
+        html += ''
+          + '<tr class="dd-row" data-product="' + item.name + '">'
+          + '  <td>' + item.name + '</td>'
+          + '  <td>' + item.adsCount + '</td>'
+          + '  <td>$' + item.spend.toLocaleString() + '</td>'
+          + '  <td>' + item.impressions.toLocaleString() + '</td>'
+          + '</tr>';
+      });
+
+      html += '</tbody></table>';
+      tableWrapper.innerHTML = html;
+    })
+    .catch(function () {
+      tableWrapper.innerHTML = '<div>Cannot load product data.</div>';
+    });
+});
