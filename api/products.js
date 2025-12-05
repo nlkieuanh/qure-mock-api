@@ -3,16 +3,13 @@ import path from "path";
 
 export default function handler(req, res) {
   try {
-
     const filePath = path.join(process.cwd(), "data", "ads.json");
     const json = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
-   
     const productMap = {};
 
     json.forEach(ad => {
       const name = ad.f_products || "Unknown";
-
       if (!productMap[name]) {
         productMap[name] = {
           name,
@@ -21,7 +18,6 @@ export default function handler(req, res) {
           impressions: 0
         };
       }
-
       productMap[name].adsCount += 1;
       productMap[name].spend += Number(ad.spend) || 0;
       productMap[name].impressions += Number(ad.impressions) || 0;
@@ -29,7 +25,10 @@ export default function handler(req, res) {
 
     const result = Object.values(productMap);
 
-   
+    // --- CORS FIX ---
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
     res.setHeader("Content-Type", "application/json");
     return res.status(200).json({ products: result });
 
