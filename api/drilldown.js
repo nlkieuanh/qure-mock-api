@@ -142,6 +142,13 @@ export default function handler(req, res) {
       // RENDER PRODUCT TABLE
       // ======================================================
       function renderProductTable(items) {
+
+      // Remove products without valid name
+        items = items.filter(p => {
+        const name = p.name?.trim();
+        return name && name !== "Unknown" && name !== "-";
+        });
+
         window.__selectedProduct = null;
         window.__selectedUsecase = null;
         window.__selectedAngle = null;
