@@ -86,7 +86,11 @@
     "% discount"
   ],
   "f_products": "Qure’s Micro-Infusion System",
-  "f_use_case": []
+  "f_use_case": [
+    "Acne",
+    "Botox",
+    "Wrinkles"
+  ]
 },
 {
   "_id": {
@@ -168,7 +172,13 @@
   ],
   "f_offers": [],
   "f_products": "",
-  "f_use_case": [],
+  "f_use_case": [
+    "Natural Pro-Aging",
+  "Confidence Self-Gifting",
+  "Redness & Congestion Relief",
+  "Anti-Cream Solution",
+  "Other"
+  ],
   "downloaded": {
     "image": "https://foresightiqeu.s3.eu-central-1.amazonaws.com/ads/6912574b755c8ccbc40624cd/2025-12-03/6930be2be8e92db72908470b_image.jpeg"
   }
@@ -258,7 +268,13 @@
     "% discount"
   ],
   "f_products": "micro-infusion system",
-  "f_use_case": []
+  "f_use_case": [
+    "Botox",
+  "Wrinkles",
+  "Fine Lines",
+  "Attractiveness",
+  "Dark Spots"
+  ]
 },
 {
   "_id": {
@@ -343,7 +359,13 @@
     "Other"
   ],
   "f_products": "Neck & Décolletage LED Light Therapy device",
-  "f_use_case": [],
+  "f_use_case": [
+    "Fine Lines",
+  "Attractiveness",
+  "Dark Spots",
+  "Smokers Line Softening",
+  "Turkey Neck Tightening"
+  ],
   "downloaded": {
     "image": "https://foresightiqeu.s3.eu-central-1.amazonaws.com/ads/6912574b755c8ccbc40624cd/2025-12-03/6930cbcfe8e92db729084c3d_image.mp4"
   }
@@ -431,7 +453,16 @@
   ],
   "f_offers": [],
   "f_products": "Micro-Infusion System",
-  "f_use_case": []
+  "f_use_case": [
+    "Acne",
+  "Botox",
+  "Wrinkles",
+  "Fine Lines",
+  "Attractiveness",
+  "Dark Spots",
+  "Smokers Line Softening",
+  "Turkey Neck Tightening"
+  ]
 },
 {
   "_id": {
@@ -518,7 +549,16 @@
     "% discount"
   ],
   "f_products": "Micro-Infusion System",
-  "f_use_case": []
+  "f_use_case": ["Fine Lines",
+  "Attractiveness",
+  "Dark Spots",
+  "Smokers Line Softening",
+  "Turkey Neck Tightening",
+  "Natural Pro-Aging",
+  "Confidence Self-Gifting",
+  "Redness & Congestion Relief",
+  "Anti-Cream Solution",
+  "Other"]
 },
 {
   "_id": {
@@ -605,7 +645,13 @@
     "% discount"
   ],
   "f_products": "Qure’s Micro-Infusion System",
-  "f_use_case": []
+  "f_use_case": [
+    "Botox",
+  "Wrinkles",
+  "Fine Lines",
+  "Attractiveness",
+  "Dark Spots"
+  ]
 },
 {
   "_id": {
@@ -692,7 +738,11 @@
     "% discount"
   ],
   "f_products": "microneedling device",
-  "f_use_case": []
+  "f_use_case": [
+    "Smokers Line Softening",
+  "Turkey Neck Tightening",
+  "Natural Pro-Aging"
+  ]
 },
 {
   "_id": {
@@ -774,7 +824,10 @@
   ],
   "f_offers": [],
   "f_products": "Micro-Infusion device",
-  "f_use_case": [],
+  "f_use_case": [
+    "Redness & Congestion Relief",
+  "Anti-Cream Solution"
+  ],
   "downloaded": {
     "image": "https://foresightiqeu.s3.eu-central-1.amazonaws.com/ads/6912574b755c8ccbc40624cd/2025-12-03/6930be2ae8e92db729084708_image.jpeg"
   }
@@ -861,7 +914,11 @@
     "% discount"
   ],
   "f_products": "Micro-infusion device for skincare",
-  "f_use_case": [],
+  "f_use_case": [
+    "Wrinkles",
+  "Fine Lines",
+  "Attractiveness"
+  ],
   "downloaded": {
     "image": "https://foresightiqeu.s3.eu-central-1.amazonaws.com/ads/6912574b755c8ccbc40624cd/2025-12-03/6930be2ae8e92db729084709_image.jpeg"
   }
@@ -948,7 +1005,11 @@
     "Other"
   ],
   "f_products": "Qure's micro-infusion system",
-  "f_use_case": [],
+  "f_use_case": [
+    "Smokers Line Softening",
+  "Turkey Neck Tightening",
+  "Natural Pro-Aging"
+  ],
   "downloaded": {
     "video": "https://foresightiqeu.s3.eu-central-1.amazonaws.com/ads/6912574b755c8ccbc40624cd/2025-12-03/6930cd6fe8e92db729084caf_video.mp4"
   }
