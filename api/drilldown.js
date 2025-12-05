@@ -16,24 +16,38 @@ export default function handler(req, res) {
       window.__selectedUsecase = null;
       window.__selectedAngle = null;
 
-      // INIT
-      attachBreadcrumbHandlers();
-      window.loadProducts();
+      // -----------------------------
+      // UPDATE BREADCRUMB UI
+      // -----------------------------
+      function updateBreadcrumb(state) {
+        const tabs = card.querySelectorAll(".drilldown-tab-button");
+
+        tabs.forEach(btn => {
+          const tab = btn.getAttribute("data-tab");
+          btn.classList.remove("is-current", "is-active", "is-inactive");
+
+          if (state === "product") {
+            if (tab === "product") btn.classList.add("is-current");
+            else btn.classList.add("is-inactive");
+          }
+
+          if (state === "usecase") {
+            if (tab === "product") btn.classList.add("is-active");
+            if (tab === "usecase") btn.classList.add("is-current");
+            if (tab === "angle") btn.classList.add("is-inactive");
+          }
+
+          if (state === "angle") {
+            if (tab === "product") btn.classList.add("is-active");
+            if (tab === "usecase") btn.classList.add("is-active");
+            if (tab === "angle") btn.classList.add("is-current");
+          }
+        });
+      }
 
       // -----------------------------
-      // LOAD PRODUCTS
+      // RENDER TABLES
       // -----------------------------
-      window.loadProducts = function () {
-        fetch(API_PRODUCTS)
-          .then(r => r.json())
-          .then(data => {
-            renderProductTable(data.products);
-            window.__selectedProduct = null;
-            window.__selectedUsecase = null;
-            window.__selectedAngle = null;
-          });
-      };
-
       function renderProductTable(items) {
         updateBreadcrumb("product");
 
@@ -65,15 +79,6 @@ export default function handler(req, res) {
         });
       }
 
-      // -----------------------------
-      // LOAD USECASES
-      // -----------------------------
-      window.loadUseCases = function (productName) {
-        fetch(API_USECASES + encodeURIComponent(productName))
-          .then(r => r.json())
-          .then(data => renderUseCaseTable(data.usecases));
-      };
-
       function renderUseCaseTable(items) {
         updateBreadcrumb("usecase");
 
@@ -104,21 +109,6 @@ export default function handler(req, res) {
         });
       }
 
-      // -----------------------------
-      // LOAD ANGLES
-      // -----------------------------
-      window.loadAngles = function (productName, usecaseName) {
-        const url =
-          API_ANGLES +
-          encodeURIComponent(productName) +
-          "&usecase=" +
-          encodeURIComponent(usecaseName);
-
-        fetch(url)
-          .then(r => r.json())
-          .then(data => renderAngleTable(data.angles));
-      };
-
       function renderAngleTable(items) {
         updateBreadcrumb("angle");
 
@@ -143,10 +133,42 @@ export default function handler(req, res) {
           row.addEventListener("click", () => {
             const angle = row.dataset.angle;
             window.__selectedAngle = angle;
-            // later: load ad-level drilldown
+            // reserved for ad-level drilldown
           });
         });
       }
+
+      // -----------------------------
+      // LOADERS (EXPOSED ON WINDOW)
+      // -----------------------------
+      window.loadProducts = function () {
+        fetch(API_PRODUCTS)
+          .then(r => r.json())
+          .then(data => {
+            renderProductTable(data.products);
+            window.__selectedProduct = null;
+            window.__selectedUsecase = null;
+            window.__selectedAngle = null;
+          });
+      };
+
+      window.loadUseCases = function (productName) {
+        fetch(API_USECASES + encodeURIComponent(productName))
+          .then(r => r.json())
+          .then(data => renderUseCaseTable(data.usecases));
+      };
+
+      window.loadAngles = function (productName, usecaseName) {
+        const url =
+          API_ANGLES +
+          encodeURIComponent(productName) +
+          "&usecase=" +
+          encodeURIComponent(usecaseName);
+
+        fetch(url)
+          .then(r => r.json())
+          .then(data => renderAngleTable(data.angles));
+      };
 
       // -----------------------------
       // BREADCRUMB CLICK HANDLERS
@@ -181,33 +203,11 @@ export default function handler(req, res) {
       }
 
       // -----------------------------
-      // UPDATE BREADCRUMB UI
+      // INIT
       // -----------------------------
-      function updateBreadcrumb(state) {
-        const tabs = card.querySelectorAll(".drilldown-tab-button");
+      attachBreadcrumbHandlers();
+      window.loadProducts();
 
-        tabs.forEach(btn => {
-          const tab = btn.getAttribute("data-tab");
-          btn.classList.remove("is-current", "is-active", "is-inactive");
-
-          if (state === "product") {
-            if (tab === "product") btn.classList.add("is-current");
-            else btn.classList.add("is-inactive");
-          }
-
-          if (state === "usecase") {
-            if (tab === "product") btn.classList.add("is-active");
-            if (tab === "usecase") btn.classList.add("is-current");
-            if (tab === "angle") btn.classList.add("is-inactive");
-          }
-
-          if (state === "angle") {
-            if (tab === "product") btn.classList.add("is-active");
-            if (tab === "usecase") btn.classList.add("is-active");
-            if (tab === "angle") btn.classList.add("is-current");
-          }
-        });
-      }
     });
   `;
 
