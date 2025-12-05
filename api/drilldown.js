@@ -10,12 +10,19 @@ export default function handler(req, res) {
 
       const API_PRODUCTS = "https://qure-mock-api.vercel.app/api/products";
       const API_USECASES = "https://qure-mock-api.vercel.app/api/usecases?product=";
+      const API_ANGLES = "https://qure-mock-api.vercel.app/api/angles?product=";
 
-      // Selected state tracking
       window.__selectedProduct = null;
       window.__selectedUsecase = null;
+      window.__selectedAngle = null;
 
-      // Load products when page loads
+      // INIT
+      attachBreadcrumbHandlers();
+      window.loadProducts();
+
+      // -----------------------------
+      // LOAD PRODUCTS
+      // -----------------------------
       window.loadProducts = function () {
         fetch(API_PRODUCTS)
           .then(r => r.json())
@@ -23,6 +30,7 @@ export default function handler(req, res) {
             renderProductTable(data.products);
             window.__selectedProduct = null;
             window.__selectedUsecase = null;
+            window.__selectedAngle = null;
           });
       };
 
@@ -46,18 +54,20 @@ export default function handler(req, res) {
         html += '</tbody></table>';
         wrapper.innerHTML = html;
 
-        // Click Product Row → Load Use Cases
         wrapper.querySelectorAll(".dd-row").forEach(row => {
           row.addEventListener("click", () => {
             const productName = row.dataset.product;
             window.__selectedProduct = productName;
             window.__selectedUsecase = null;
-            loadUseCases(productName);
+            window.__selectedAngle = null;
+            window.loadUseCases(productName);
           });
         });
       }
 
-      // Load usecases for selected product
+      // -----------------------------
+      // LOAD USECASES
+      // -----------------------------
       window.loadUseCases = function (productName) {
         fetch(API_USECASES + encodeURIComponent(productName))
           .then(r => r.json())
@@ -88,13 +98,59 @@ export default function handler(req, res) {
           row.addEventListener("click", () => {
             const usecase = row.dataset.usecase;
             window.__selectedUsecase = usecase;
-            updateBreadcrumb("angle");
-            if (window.loadAngles) window.loadAngles(window.__selectedProduct, usecase);
+            window.__selectedAngle = null;
+            window.loadAngles(window.__selectedProduct, usecase);
           });
         });
       }
 
-      // Breadcrumb tab click behavior
+      // -----------------------------
+      // LOAD ANGLES
+      // -----------------------------
+      window.loadAngles = function (productName, usecaseName) {
+        const url =
+          API_ANGLES +
+          encodeURIComponent(productName) +
+          "&usecase=" +
+          encodeURIComponent(usecaseName);
+
+        fetch(url)
+          .then(r => r.json())
+          .then(data => renderAngleTable(data.angles));
+      };
+
+      function renderAngleTable(items) {
+        updateBreadcrumb("angle");
+
+        let html = '<table class="adv-channel-table">';
+        html += '<thead><tr>';
+        html += '<th>Angle</th><th>Ads</th><th>Spend</th><th>Impressions</th>';
+        html += '</tr></thead><tbody>';
+
+        items.forEach(a => {
+          html += '<tr class="dd-row" data-angle="' + a.name + '">';
+          html += '<td>' + a.name + '</td>';
+          html += '<td>' + a.adsCount + '</td>';
+          html += '<td>$' + a.spend.toLocaleString() + '</td>';
+          html += '<td>' + a.impressions.toLocaleString() + '</td>';
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        wrapper.innerHTML = html;
+
+        wrapper.querySelectorAll(".dd-row").forEach(row => {
+          row.addEventListener("click", () => {
+            const angle = row.dataset.angle;
+            window.__selectedAngle = angle;
+            // later: load ad-level drilldown
+          });
+        });
+      }
+
+      // -----------------------------
+      // BREADCRUMB CLICK HANDLERS
+      // -----------------------------
       function attachBreadcrumbHandlers() {
         const tabs = card.querySelectorAll(".drilldown-tab-button");
 
@@ -124,7 +180,9 @@ export default function handler(req, res) {
         });
       }
 
-      // Update breadcrumb UI
+      // -----------------------------
+      // UPDATE BREADCRUMB UI
+      // -----------------------------
       function updateBreadcrumb(state) {
         const tabs = card.querySelectorAll(".drilldown-tab-button");
 
@@ -150,11 +208,6 @@ export default function handler(req, res) {
           }
         });
       }
-
-      // INIT
-      attachBreadcrumbHandlers();
-      window.loadProducts();
-
     });
   `;
 
