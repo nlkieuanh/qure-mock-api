@@ -8,6 +8,11 @@ export default function handler(req, res) {
       var wrapper = card.querySelector(".adv-channel-table-wrapper");
       if (!wrapper) return;
 
+      // Summary Text (Text Blocks in Webflow)
+      const summaryProduct = card.querySelector(".dd-summary-product");
+      const summaryUsecase = card.querySelector(".dd-summary-usecase");
+      const summaryAngle = card.querySelector(".dd-summary-angle");
+
       const API_PRODUCTS = "https://qure-mock-api.vercel.app/api/products";
       const API_USECASES = "https://qure-mock-api.vercel.app/api/usecases?product=";
       const API_ANGLES = "https://qure-mock-api.vercel.app/api/angles?product=";
@@ -16,9 +21,49 @@ export default function handler(req, res) {
       window.__selectedUsecase = null;
       window.__selectedAngle = null;
 
-      // -----------------------------
-      // UPDATE BREADCRUMB UI
-      // -----------------------------
+      // ======================================================
+      // SUMMARY TEXT UPDATE (TEXT BLOCKS)
+      // ======================================================
+      function updateSummaryUI() {
+        if (summaryProduct) {
+          summaryProduct.textContent =
+            window.__selectedProduct
+              ? "Selected Product: " + window.__selectedProduct
+              : "";
+        }
+
+        if (summaryUsecase) {
+          summaryUsecase.textContent =
+            window.__selectedUsecase
+              ? "Selected Use Case: " + window.__selectedUsecase
+              : "";
+        }
+
+        if (summaryAngle) {
+          summaryAngle.textContent =
+            window.__selectedAngle
+              ? "Selected Angle: " + window.__selectedAngle
+              : "";
+        }
+      }
+
+      // ======================================================
+      // BUILD DYNAMIC TABLE HEADER LABEL
+      // ======================================================
+      function buildHeader(label) {
+        let data = [];
+
+        if (window.__selectedProduct) data.push("Product: " + window.__selectedProduct);
+        if (window.__selectedUsecase) data.push("Use Case: " + window.__selectedUsecase);
+        if (window.__selectedAngle) data.push("Angle: " + window.__selectedAngle);
+
+        let suffix = data.length > 0 ? " (" + data.join(" / ") + ")" : "";
+        return label + suffix;
+      }
+
+      // ======================================================
+      // BREADCRUMB UPDATE
+      // ======================================================
       function updateBreadcrumb(state) {
         const tabs = card.querySelectorAll(".drilldown-tab-button");
 
@@ -45,27 +90,34 @@ export default function handler(req, res) {
         });
       }
 
-      // -----------------------------
-      // RENDER TABLES
-      // -----------------------------
+      // ======================================================
+      // RENDER PRODUCT TABLE
+      // ======================================================
       function renderProductTable(items) {
+        window.__selectedProduct = null;
+        window.__selectedUsecase = null;
+        window.__selectedAngle = null;
+
+        updateSummaryUI();
         updateBreadcrumb("product");
 
         let html = '<table class="adv-channel-table">';
-        html += '<thead><tr>';
-        html += '<th>Product</th><th>Ads</th><th>Spend</th><th>Impressions</th>';
-        html += '</tr></thead><tbody>';
+        html += "<thead><tr>";
+        html += "<th>" + buildHeader("PRODUCT") + "</th>";
+        html += "<th>Ads</th><th>Spend</th><th>Impressions</th>";
+        html += "</tr></thead><tbody>";
 
         items.forEach(p => {
-          html += '<tr class="dd-row" data-product="' + p.name + '">';
-          html += '<td>' + p.name + '</td>';
-          html += '<td>' + p.adsCount + '</td>';
-          html += '<td>$' + p.spend.toLocaleString() + '</td>';
-          html += '<td>' + p.impressions.toLocaleString() + '</td>';
-          html += '</tr>';
+          html += 
+            '<tr class="dd-row" data-product="' + p.name + '">' +
+            '<td>' + p.name + '</td>' +
+            '<td>' + p.adsCount + '</td>' +
+            '<td>$' + p.spend.toLocaleString() + '</td>' +
+            '<td>' + p.impressions.toLocaleString() + '</td>' +
+            '</tr>';
         });
 
-        html += '</tbody></table>';
+        html += "</tbody></table>";
         wrapper.innerHTML = html;
 
         wrapper.querySelectorAll(".dd-row").forEach(row => {
@@ -74,29 +126,37 @@ export default function handler(req, res) {
             window.__selectedProduct = productName;
             window.__selectedUsecase = null;
             window.__selectedAngle = null;
+
+            updateSummaryUI();
             window.loadUseCases(productName);
           });
         });
       }
 
+      // ======================================================
+      // RENDER USE CASE TABLE
+      // ======================================================
       function renderUseCaseTable(items) {
         updateBreadcrumb("usecase");
+        updateSummaryUI();
 
         let html = '<table class="adv-channel-table">';
-        html += '<thead><tr>';
-        html += '<th>Use Case</th><th>Ads</th><th>Spend</th><th>Impressions</th>';
-        html += '</tr></thead><tbody>';
+        html += "<thead><tr>";
+        html += "<th>" + buildHeader("USE CASE") + "</th>";
+        html += "<th>Ads</th><th>Spend</th><th>Impressions</th>";
+        html += "</tr></thead><tbody>";
 
         items.forEach(uc => {
-          html += '<tr class="dd-row" data-usecase="' + uc.name + '">';
-          html += '<td>' + uc.name + '</td>';
-          html += '<td>' + uc.adsCount + '</td>';
-          html += '<td>$' + uc.spend.toLocaleString() + '</td>';
-          html += '<td>' + uc.impressions.toLocaleString() + '</td>';
-          html += '</tr>';
+          html += 
+            '<tr class="dd-row" data-usecase="' + uc.name + '">' +
+            '<td>' + uc.name + '</td>' +
+            '<td>' + uc.adsCount + '</td>' +
+            '<td>$' + uc.spend.toLocaleString() + '</td>' +
+            '<td>' + uc.impressions.toLocaleString() + '</td>' +
+            '</tr>';
         });
 
-        html += '</tbody></table>';
+        html += "</tbody></table>";
         wrapper.innerHTML = html;
 
         wrapper.querySelectorAll(".dd-row").forEach(row => {
@@ -104,52 +164,56 @@ export default function handler(req, res) {
             const usecase = row.dataset.usecase;
             window.__selectedUsecase = usecase;
             window.__selectedAngle = null;
+
+            updateSummaryUI();
             window.loadAngles(window.__selectedProduct, usecase);
           });
         });
       }
 
+      // ======================================================
+      // RENDER ANGLE TABLE
+      // ======================================================
       function renderAngleTable(items) {
         updateBreadcrumb("angle");
+        updateSummaryUI();
 
         let html = '<table class="adv-channel-table">';
-        html += '<thead><tr>';
-        html += '<th>Angle</th><th>Ads</th><th>Spend</th><th>Impressions</th>';
-        html += '</tr></thead><tbody>';
+        html += "<thead><tr>";
+        html += "<th>" + buildHeader("ANGLE") + "</th>";
+        html += "<th>Ads</th><th>Spend</th><th>Impressions</th>";
+        html += "</tr></thead><tbody>";
 
         items.forEach(a => {
-          html += '<tr class="dd-row" data-angle="' + a.name + '">';
-          html += '<td>' + a.name + '</td>';
-          html += '<td>' + a.adsCount + '</td>';
-          html += '<td>$' + a.spend.toLocaleString() + '</td>';
-          html += '<td>' + a.impressions.toLocaleString() + '</td>';
-          html += '</tr>';
+          html += 
+            '<tr class="dd-row" data-angle="' + a.name + '">' +
+            '<td>' + a.name + '</td>' +
+            '<td>' + a.adsCount + '</td>' +
+            '<td>$' + a.spend.toLocaleString() + '</td>' +
+            '<td>' + a.impressions.toLocaleString() + '</td>' +
+            '</tr>';
         });
 
-        html += '</tbody></table>';
+        html += "</tbody></table>";
         wrapper.innerHTML = html;
 
         wrapper.querySelectorAll(".dd-row").forEach(row => {
           row.addEventListener("click", () => {
             const angle = row.dataset.angle;
             window.__selectedAngle = angle;
-            // reserved for ad-level drilldown
+
+            updateSummaryUI();
           });
         });
       }
 
-      // -----------------------------
-      // LOADERS (EXPOSED ON WINDOW)
-      // -----------------------------
+      // ======================================================
+      // LOADERS
+      // ======================================================
       window.loadProducts = function () {
         fetch(API_PRODUCTS)
           .then(r => r.json())
-          .then(data => {
-            renderProductTable(data.products);
-            window.__selectedProduct = null;
-            window.__selectedUsecase = null;
-            window.__selectedAngle = null;
-          });
+          .then(data => renderProductTable(data.products));
       };
 
       window.loadUseCases = function (productName) {
@@ -170,42 +234,9 @@ export default function handler(req, res) {
           .then(data => renderAngleTable(data.angles));
       };
 
-      // -----------------------------
-      // BREADCRUMB CLICK HANDLERS
-      // -----------------------------
-      function attachBreadcrumbHandlers() {
-        const tabs = card.querySelectorAll(".drilldown-tab-button");
-
-        tabs.forEach(btn => {
-          btn.addEventListener("click", function () {
-            if (!btn.classList.contains("is-active")) return;
-
-            const tab = btn.getAttribute("data-tab");
-
-            if (tab === "product" && window.loadProducts) {
-              window.loadProducts();
-            }
-
-            if (tab === "usecase" && window.loadUseCases && window.__selectedProduct) {
-              window.loadUseCases(window.__selectedProduct);
-            }
-
-            if (
-              tab === "angle" &&
-              window.loadAngles &&
-              window.__selectedProduct &&
-              window.__selectedUsecase
-            ) {
-              window.loadAngles(window.__selectedProduct, window.__selectedUsecase);
-            }
-          });
-        });
-      }
-
-      // -----------------------------
+      // ======================================================
       // INIT
-      // -----------------------------
-      attachBreadcrumbHandlers();
+      // ======================================================
       window.loadProducts();
 
     });
