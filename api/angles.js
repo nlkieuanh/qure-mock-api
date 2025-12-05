@@ -23,27 +23,26 @@ export default function handler(req, res) {
       if (ad.f_products !== product) return;
 
       let useCases = [];
+
       if (Array.isArray(ad.f_use_case)) {
         useCases = ad.f_use_case;
       } else if (typeof ad.f_use_case === "string" && ad.f_use_case.trim() !== "") {
         useCases = [ad.f_use_case.trim()];
       }
 
-      // Must match use case to continue
       if (!useCases.includes(usecase)) return;
 
-      // Normalize angle field
+      // ---- FIXED: correct angle field ----
       let angles = [];
 
-      if (Array.isArray(ad.f_angle) && ad.f_angle.length > 0) {
-        angles = ad.f_angle;
-      } else if (typeof ad.f_angle === "string" && ad.f_angle.trim() !== "") {
-        angles = [ad.f_angle.trim()];
+      if (Array.isArray(ad.f_angles) && ad.f_angles.length > 0) {
+        angles = ad.f_angles;
+      } else if (typeof ad.f_angles === "string" && ad.f_angles.trim() !== "") {
+        angles = [ad.f_angles.trim()];
       } else {
         angles = ["Unknown"];
       }
 
-      // Aggregate angle data
       angles.forEach(name => {
         if (!map[name]) {
           map[name] = {
