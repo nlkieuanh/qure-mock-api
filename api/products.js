@@ -25,28 +25,50 @@ export default function handler(req, res) {
 
     const products = Object.values(productMap);
 
-    // Build JS code string to run on the client
+    // JavaScript to inject into Webflow
     const code = `
       document.addEventListener("DOMContentLoaded", function () {
+
+        // Locate correct card
         var card = document.querySelector(".card-block-wrap.product-combination-card");
         if (!card) return;
 
         var wrapper = card.querySelector(".adv-channel-table-wrapper");
-        var tabs = card.querySelectorAll(".drilldown-tab-button");
+        if (!wrapper) return;
 
-        function setActive(tab) {
-          tabs.forEach(btn => {
-            var t = btn.getAttribute("data-tab");
-            if (t === tab) btn.classList.add("is-active");
-            else btn.classList.remove("is-active");
+        // Breadcrumb logic
+        function updateBreadcrumb(state) {
+          var tabs = card.querySelectorAll(".drilldown-tab-button");
+          tabs.forEach(function (btn) {
+            var tab = btn.getAttribute("data-tab");
+            btn.classList.remove("is-current", "is-active", "is-inactive");
+
+            if (state === "product") {
+              if (tab === "product") btn.classList.add("is-current");
+              else btn.classList.add("is-inactive");
+            }
+
+            if (state === "usecase") {
+              if (tab === "product") btn.classList.add("is-active");
+              if (tab === "usecase") btn.classList.add("is-current");
+              if (tab === "angle") btn.classList.add("is-inactive");
+            }
+
+            if (state === "angle") {
+              if (tab === "product") btn.classList.add("is-active");
+              if (tab === "usecase") btn.classList.add("is-active");
+              if (tab === "angle") btn.classList.add("is-current");
+            }
           });
         }
 
-        setActive("product");
+        updateBreadcrumb("product");
 
+        // Render product table
         var html = '<table class="adv-channel-table">';
-        html += '<thead><tr><th>Product</th><th>Ads</th><th>Spend</th><th>Impressions</th></tr></thead>';
-        html += '<tbody>';
+        html += '<thead><tr>';
+        html += '<th>Product</th><th>Ads</th><th>Spend</th><th>Impressions</th>';
+        html += '</tr></thead><tbody>';
 
         var data = ${JSON.stringify(products)};
 
@@ -62,19 +84,25 @@ export default function handler(req, res) {
         html += '</tbody></table>';
         wrapper.innerHTML = html;
 
-        // Click → load use cases
+        // Click event for each product row
         wrapper.querySelectorAll(".dd-row").forEach(function (row) {
           row.addEventListener("click", function () {
             var product = row.dataset.product;
-            window.loadUseCases && window.loadUseCases(product);
-            setActive("usecase");
+
+            updateBreadcrumb("usecase");
+
+            if (window.loadUseCases) {
+              window.loadUseCases(product);
+            }
           });
         });
       });
     `;
 
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Content-Type", "text/javascript");
+
     return res.status(200).send(code);
 
   } catch (err) {
