@@ -22,7 +22,7 @@ export default function handler(req, res) {
       window.__selectedAngle = null;
 
       // ======================================================
-      // SUMMARY TEXT UPDATE (TEXT BLOCKS)
+      // UPDATE SUMMARY UI
       // ======================================================
       function updateSummaryUI() {
         if (summaryProduct) {
@@ -48,21 +48,27 @@ export default function handler(req, res) {
       }
 
       // ======================================================
-      // BUILD DYNAMIC TABLE HEADER LABEL
+      // BUILD TABLE HEADER (dynamic)
       // ======================================================
       function buildHeader(label) {
-        let data = [];
+        let meta = [];
 
-        if (window.__selectedProduct) data.push("Product: " + window.__selectedProduct);
-        if (window.__selectedUsecase) data.push("Use Case: " + window.__selectedUsecase);
-        if (window.__selectedAngle) data.push("Angle: " + window.__selectedAngle);
+        if (window.__selectedProduct) {
+          meta.push("Product: " + window.__selectedProduct);
+        }
+        if (window.__selectedUsecase) {
+          meta.push("Use Case: " + window.__selectedUsecase);
+        }
+        if (window.__selectedAngle) {
+          meta.push("Angle: " + window.__selectedAngle);
+        }
 
-        let suffix = data.length > 0 ? " (" + data.join(" / ") + ")" : "";
+        const suffix = meta.length ? " (" + meta.join(" / ") + ")" : "";
         return label + suffix;
       }
 
       // ======================================================
-      // BREADCRUMB UPDATE
+      // UPDATE BREADCRUMB UI
       // ======================================================
       function updateBreadcrumb(state) {
         const tabs = card.querySelectorAll(".drilldown-tab-button");
@@ -87,6 +93,48 @@ export default function handler(req, res) {
             if (tab === "usecase") btn.classList.add("is-active");
             if (tab === "angle") btn.classList.add("is-current");
           }
+        });
+      }
+
+      // ======================================================
+      // BREADCRUMB CLICK HANDLER (FIXED)
+      // ======================================================
+      function attachBreadcrumbHandlers() {
+        const tabs = card.querySelectorAll(".drilldown-tab-button");
+
+        tabs.forEach(btn => {
+          btn.addEventListener("click", function () {
+
+            if (!btn.classList.contains("is-active")) return;
+
+            const tab = btn.getAttribute("data-tab");
+
+            // Back to PRODUCT
+            if (tab === "product") {
+              window.__selectedProduct = null;
+              window.__selectedUsecase = null;
+              window.__selectedAngle = null;
+              updateSummaryUI();
+              window.loadProducts();
+            }
+
+            // Back to USE CASE
+            if (tab === "usecase") {
+              if (!window.__selectedProduct) return;
+              window.__selectedUsecase = null;
+              window.__selectedAngle = null;
+              updateSummaryUI();
+              window.loadUseCases(window.__selectedProduct);
+            }
+
+            // Back to ANGLE
+            if (tab === "angle") {
+              if (!window.__selectedProduct || !window.__selectedUsecase) return;
+              window.__selectedAngle = null;
+              updateSummaryUI();
+              window.loadAngles(window.__selectedProduct, window.__selectedUsecase);
+            }
+          });
         });
       }
 
@@ -122,13 +170,13 @@ export default function handler(req, res) {
 
         wrapper.querySelectorAll(".dd-row").forEach(row => {
           row.addEventListener("click", () => {
-            const productName = row.dataset.product;
-            window.__selectedProduct = productName;
+            const product = row.dataset.product;
+            window.__selectedProduct = product;
             window.__selectedUsecase = null;
             window.__selectedAngle = null;
 
             updateSummaryUI();
-            window.loadUseCases(productName);
+            window.loadUseCases(product);
           });
         });
       }
@@ -237,6 +285,7 @@ export default function handler(req, res) {
       // ======================================================
       // INIT
       // ======================================================
+      attachBreadcrumbHandlers();
       window.loadProducts();
 
     });
