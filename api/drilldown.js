@@ -10,19 +10,19 @@ export default function handler(req, res) {
 
       const chipContainer = card.querySelector(".dd-chips-container");
 
-      const API_PRODUCTS = "https://qure-mock-api.vercel.app/api/products";
-      const API_USECASES = "https://qure-mock-api.vercel.app/api/usecases?product=";
-      const API_ANGLES = "https://qure-mock-api.vercel.app/api/angles?product=";
+      const API_PRODUCTS  = "https://qure-mock-api.vercel.app/api/products";
+      const API_USECASES  = "https://qure-mock-api.vercel.app/api/usecases";
+      const API_ANGLES    = "https://qure-mock-api.vercel.app/api/angles";
 
       // ======================================================
-      // GLOBAL STATE
+      // STATE
       // ======================================================
       window.__ddState = {
-        level: "product",
-        rowFilter: null,
+        level: "product",     // product | usecase | angle
         product: null,
         usecase: null,
-        angle: null
+        angle: null,
+        rowFilter: null       // { type, value }
       };
 
       // ======================================================
@@ -31,8 +31,8 @@ export default function handler(req, res) {
       function updateTabs() {
         const tabs = card.querySelectorAll(".drilldown-tab-button");
         tabs.forEach(btn => {
-          const tabLvl = btn.dataset.tab;
-          if (tabLvl === window.__ddState.level) {
+          const tab = btn.dataset.tab;
+          if (tab === window.__ddState.level) {
             btn.classList.add("is-current");
           } else {
             btn.classList.remove("is-current");
@@ -42,29 +42,26 @@ export default function handler(req, res) {
 
       function attachTabHandlers() {
         const tabs = card.querySelectorAll(".drilldown-tab-button");
+
         tabs.forEach(btn => {
           btn.addEventListener("click", () => {
-            const selected = btn.dataset.tab;
-            if (!selected) return;
+            const level = btn.dataset.tab;
+            if (!level) return;
 
-            // reset chip filter
+            // reset chip + drilldown filters
             window.__ddState.rowFilter = null;
+            window.__ddState.product = null;
+            window.__ddState.usecase = null;
+            window.__ddState.angle = null;
+
+            window.__ddState.level = level;
+            updateTabs();
             renderChips();
 
-            // update level
-            window.__ddState.level = selected;
-
-            if (selected === "product") {
-              loadProducts();
-            }
-            if (selected === "usecase") {
-              loadUseCases(window.__ddState.product);
-            }
-            if (selected === "angle") {
-              loadAngles(window.__ddState.product, window.__ddState.usecase);
-            }
-
-            updateTabs();
+            // FULL VIEW LOGIC
+            if (level === "product") loadProducts();
+            if (level === "usecase") loadAllUseCases();
+            if (level === "angle")   loadAllAngles();
           });
         });
       }
@@ -87,13 +84,11 @@ export default function handler(req, res) {
         \`;
 
         chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
-          // remove chip
           window.__ddState.rowFilter = null;
 
-          // reload level
           if (window.__ddState.level === "product") loadProducts();
-          if (window.__ddState.level === "usecase") loadUseCases(window.__ddState.product);
-          if (window.__ddState.level === "angle") loadAngles(window.__ddState.product, window.__ddState.usecase);
+          if (window.__ddState.level === "usecase") loadAllUseCases();
+          if (window.__ddState.level === "angle")   loadAllAngles();
 
           renderChips();
         });
@@ -102,28 +97,36 @@ export default function handler(req, res) {
       }
 
       // ======================================================
-      // APPLY CHIP FILTER
+      // FILTER VIA CHIP
       // ======================================================
-      function applyRowFilter(items) {
+      function applyChipFilter(items) {
         const f = window.__ddState.rowFilter;
         if (!f) return items;
+
         return items.filter(i => i.name === f.value);
       }
 
       // ======================================================
-      // RENDER TABLES
+      // TABLE RENDERERS
       // ======================================================
       function renderProductTable(items) {
         window.__ddState.level = "product";
         updateTabs();
 
-        // filter via chip
-        items = applyRowFilter(items);
+        items = applyChipFilter(items);
 
-        let html = '<table class="adv-channel-table">';
-        html += "<thead><tr>";
-        html += "<th>Product</th><th>Ads</th><th>Spend</th><th>Impressions</th>";
-        html += "</tr></thead><tbody>";
+        let html = \`
+          <table class="adv-channel-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Ads</th>
+                <th>Spend</th>
+                <th>Impressions</th>
+              </tr>
+            </thead>
+            <tbody>
+        \`;
 
         items.forEach(p => {
           html += \`
@@ -141,16 +144,15 @@ export default function handler(req, res) {
 
         wrapper.querySelectorAll(".dd-row").forEach(row => {
           row.addEventListener("click", () => {
-            const value = row.dataset.value;
 
-            // create chip filter
-            window.__ddState.rowFilter = { type: "product", value };
+            const product = row.dataset.value;
+
+            // Create chip
+            window.__ddState.rowFilter = { type: "product", value: product };
+            window.__ddState.product = product;
             renderChips();
 
-            // update drilldown state
-            window.__ddState.product = value;
-
-            loadUseCases(value);
+            loadUseCasesFiltered(product);
           });
         });
       }
@@ -159,12 +161,20 @@ export default function handler(req, res) {
         window.__ddState.level = "usecase";
         updateTabs();
 
-        items = applyRowFilter(items);
+        items = applyChipFilter(items);
 
-        let html = '<table class="adv-channel-table">';
-        html += "<thead><tr>";
-        html += "<th>Use Case</th><th>Ads</th><th>Spend</th><th>Impressions</th>";
-        html += "</tr></thead><tbody>";
+        let html = \`
+          <table class="adv-channel-table">
+            <thead>
+              <tr>
+                <th>Use Case</th>
+                <th>Ads</th>
+                <th>Spend</th>
+                <th>Impressions</th>
+              </tr>
+            </thead>
+            <tbody>
+        \`;
 
         items.forEach(uc => {
           html += \`
@@ -182,15 +192,14 @@ export default function handler(req, res) {
 
         wrapper.querySelectorAll(".dd-row").forEach(row => {
           row.addEventListener("click", () => {
-            const value = row.dataset.value;
+            const usecase = row.dataset.value;
 
-            // chip filter
-            window.__ddState.rowFilter = { type: "usecase", value };
+            // Create chip
+            window.__ddState.rowFilter = { type: "usecase", value: usecase };
+            window.__ddState.usecase = usecase;
             renderChips();
 
-            window.__ddState.usecase = value;
-
-            loadAngles(window.__ddState.product, value);
+            loadAnglesFiltered(window.__ddState.product, usecase);
           });
         });
       }
@@ -199,12 +208,20 @@ export default function handler(req, res) {
         window.__ddState.level = "angle";
         updateTabs();
 
-        items = applyRowFilter(items);
+        items = applyChipFilter(items);
 
-        let html = '<table class="adv-channel-table">';
-        html += "<thead><tr>";
-        html += "<th>Angle</th><th>Ads</th><th>Spend</th><th>Impressions</th>";
-        html += "</tr></thead><tbody>";
+        let html = \`
+          <table class="adv-channel-table">
+            <thead>
+              <tr>
+                <th>Angle</th>
+                <th>Ads</th>
+                <th>Spend</th>
+                <th>Impressions</th>
+              </tr>
+            </thead>
+            <tbody>
+        \`;
 
         items.forEach(a => {
           html += \`
@@ -219,49 +236,49 @@ export default function handler(req, res) {
 
         html += "</tbody></table>";
         wrapper.innerHTML = html;
-
-        wrapper.querySelectorAll(".dd-row").forEach(row => {
-          row.addEventListener("click", () => {
-            const value = row.dataset.value;
-
-            window.__ddState.rowFilter = { type: "angle", value };
-            renderChips();
-
-            window.__ddState.angle = value;
-          });
-        });
       }
 
       // ======================================================
-      // LOADERS
+      // LOAD FUNCTIONS
       // ======================================================
+
       function loadProducts() {
         fetch(API_PRODUCTS)
           .then(r => r.json())
-          .then(data => {
-            renderProductTable(data.products);
-          });
+          .then(data => renderProductTable(data.products));
       }
 
-      function loadUseCases(productName) {
-        fetch(API_USECASES + encodeURIComponent(productName))
+      // FULL USE CASE LIST
+      function loadAllUseCases() {
+        fetch(API_USECASES)
           .then(r => r.json())
-          .then(data => {
-            renderUseCaseTable(data.usecases);
-          });
+          .then(data => renderUseCaseTable(data.usecases));
       }
 
-      function loadAngles(productName, usecaseName) {
-        const url = API_ANGLES +
-          encodeURIComponent(productName) +
-          "&usecase=" +
-          encodeURIComponent(usecaseName);
+      // FULL ANGLE LIST
+      function loadAllAngles() {
+        fetch(API_ANGLES)
+          .then(r => r.json())
+          .then(data => renderAngleTable(data.angles));
+      }
+
+      // FILTERED USE CASE BY PRODUCT
+      function loadUseCasesFiltered(product) {
+        fetch(API_USECASES + "?product=" + encodeURIComponent(product))
+          .then(r => r.json())
+          .then(data => renderUseCaseTable(data.usecases));
+      }
+
+      // FILTERED ANGLE BY PRODUCT + USECASE
+      function loadAnglesFiltered(product, usecase) {
+        const url = 
+          API_ANGLES +
+          "?product=" + encodeURIComponent(product) +
+          "&usecase=" + encodeURIComponent(usecase);
 
         fetch(url)
           .then(r => r.json())
-          .then(data => {
-            renderAngleTable(data.angles);
-          });
+          .then(data => renderAngleTable(data.angles));
       }
 
       // ======================================================
