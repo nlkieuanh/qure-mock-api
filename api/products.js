@@ -6,6 +6,20 @@ export default function handler(req, res) {
     const filePath = path.join(process.cwd(), "data", "ads.json");
     const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
+    // ===================================================
+    // ENABLE CORS (required by Webflow)
+    // ===================================================
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+
+    // ===================================================
+    // FULL PRODUCT LIST (This endpoint always full-mode)
+    // ===================================================
     const map = {};
 
     ads.forEach(ad => {
@@ -26,9 +40,6 @@ export default function handler(req, res) {
     });
 
     const result = Object.values(map);
-
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Content-Type", "application/json");
 
     return res.status(200).json({ products: result });
 

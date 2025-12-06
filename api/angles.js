@@ -10,29 +10,73 @@ export default function handler(req, res) {
     const product = url.searchParams.get("product");
     const usecase = url.searchParams.get("usecase");
 
-    if (!product) {
-      return res.status(400).json({ error: "Missing product query param" });
-    }
-    if (!usecase) {
-      return res.status(400).json({ error: "Missing usecase query param" });
+    // ===================================================
+    // ENABLE CORS FOR WEBFLOW
+    // ===================================================
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
     }
 
+    // ===================================================
+    // MODE 1 → FULL ANGLE LIST (Tab Click)
+    // ===================================================
+    if (!product && !usecase) {
+      const map = {};
+
+      ads.forEach(ad => {
+        let angles = [];
+
+        if (Array.isArray(ad.f_angles) && ad.f_angles.length > 0) {
+          angles = ad.f_angles;
+        } else if (typeof ad.f_angles === "string" && ad.f_angles.trim() !== "") {
+          angles = [ad.f_angles.trim()];
+        } else {
+          angles = ["Unknown"];
+        }
+
+        angles.forEach(name => {
+          if (!map[name]) {
+            map[name] = {
+              name,
+              adsCount: 0,
+              spend: 0,
+              impressions: 0,
+            };
+          }
+
+          map[name].adsCount += 1;
+          map[name].spend += Number(ad.spend) || 0;
+          map[name].impressions += Number(ad.impressions) || 0;
+        });
+      });
+
+      return res.status(200).json({ angles: Object.values(map) });
+    }
+
+    // ===================================================
+    // MODE 2 → FILTERED BY PRODUCT + USECASE (Drilldown)
+    // ===================================================
     const map = {};
 
     ads.forEach(ad => {
-      if (ad.f_products !== product) return;
+      if (product && ad.f_products !== product) return;
 
+      // match usecase:
       let useCases = [];
 
-      if (Array.isArray(ad.f_use_case)) {
+      if (Array.isArray(ad.f_use_case) && ad.f_use_case.length > 0) {
         useCases = ad.f_use_case;
       } else if (typeof ad.f_use_case === "string" && ad.f_use_case.trim() !== "") {
         useCases = [ad.f_use_case.trim()];
       }
 
-      if (!useCases.includes(usecase)) return;
+      if (usecase && !useCases.includes(usecase)) return;
 
-      // ---- FIXED: correct angle field ----
+      // --- angle field ---
       let angles = [];
 
       if (Array.isArray(ad.f_angles) && ad.f_angles.length > 0) {
@@ -49,7 +93,7 @@ export default function handler(req, res) {
             name,
             adsCount: 0,
             spend: 0,
-            impressions: 0
+            impressions: 0,
           };
         }
 
@@ -59,12 +103,7 @@ export default function handler(req, res) {
       });
     });
 
-    const result = Object.values(map);
-
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Content-Type", "application/json");
-
-    return res.status(200).json({ angles: result });
+    return res.status(200).json({ angles: Object.values(map) });
 
   } catch (err) {
     console.error("API ERROR /api/angles:", err);
