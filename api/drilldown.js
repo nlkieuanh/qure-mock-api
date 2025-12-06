@@ -20,7 +20,7 @@ export default function handler(req, res) {
         product: null,
         usecase: null,
         angle: null,
-        filters: []    // array of {type, value}
+        filters: [] // array of {type, value}
       };
 
       // ======================================================
@@ -41,12 +41,12 @@ export default function handler(req, res) {
             const level = btn.dataset.tab;
             if (!level) return;
 
-            // RESET DRILLDOWN STATE
+            // RESET ALL FILTERS + DRILLDOWN STATE
             window.__ddState.level = level;
             window.__ddState.product = null;
             window.__ddState.usecase = null;
             window.__ddState.angle = null;
-            window.__ddState.rowFilter = null;
+            window.__ddState.filters = []; // reset all chips
 
             renderChips();
             updateTabs();
@@ -63,65 +63,71 @@ export default function handler(req, res) {
       // CHIP UI
       // ======================================================
       function renderChips() {
-  chipContainer.innerHTML = "";
+        chipContainer.innerHTML = "";
 
-  window.__ddState.filters.forEach((f, index) => {
-    const chip = document.createElement("div");
-    chip.className = "dd-chip";
+        window.__ddState.filters.forEach((f, index) => {
+          const chip = document.createElement("div");
+          chip.className = "dd-chip";
 
-    chip.innerHTML = \`
-      <span class="dd-chip-label">\${f.type}: \${f.value}</span>
-      <div class="dd-chip-remove">✕</div>
-    \`;
+          chip.innerHTML = \`
+            <span class="dd-chip-label">\${f.type}: \${f.value}</span>
+            <div class="dd-chip-remove">✕</div>
+          \`;
 
-    chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
-      // Remove this chip
-      window.__ddState.filters.splice(index, 1);
+          chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
+            // Remove only this chip
+            window.__ddState.filters.splice(index, 1);
 
-      // Reset drilldown state based on remaining chips
-      window.__ddState.product = null;
-      window.__ddState.usecase = null;
+            // Reset drilldown state based on remaining chips
+            window.__ddState.product = null;
+            window.__ddState.usecase = null;
 
-      window.__ddState.filters.forEach(ch => {
-        if (ch.type === "product") window.__ddState.product = ch.value;
-        if (ch.type === "usecase") window.__ddState.usecase = ch.value;
-      });
+            window.__ddState.filters.forEach(ch => {
+              if (ch.type === "product") window.__ddState.product = ch.value;
+              if (ch.type === "usecase") window.__ddState.usecase = ch.value;
+            });
 
-      // Reload correct level
-      if (window.__ddState.level === "product") loadProducts();
-      if (window.__ddState.level === "usecase") {
-        if (window.__ddState.product) loadUseCasesFiltered(window.__ddState.product);
-        else loadAllUseCases();
+            // Reload correct view
+            if (window.__ddState.level === "product") {
+              loadProducts();
+            }
+
+            if (window.__ddState.level === "usecase") {
+              if (window.__ddState.product) loadUseCasesFiltered(window.__ddState.product);
+              else loadAllUseCases();
+            }
+
+            if (window.__ddState.level === "angle") {
+              if (window.__ddState.product && window.__ddState.usecase) {
+                loadAnglesFiltered(window.__ddState.product, window.__ddState.usecase);
+              } else {
+                loadAllAngles();
+              }
+            }
+
+            renderChips();
+          });
+
+          chipContainer.appendChild(chip);
+        });
       }
-      if (window.__ddState.level === "angle") {
-        if (window.__ddState.product && window.__ddState.usecase)
-          loadAnglesFiltered(window.__ddState.product, window.__ddState.usecase);
-        else loadAllAngles();
-      }
-
-      renderChips();
-    });
-
-    chipContainer.appendChild(chip);
-  });
-}
-
 
       // ======================================================
       // APPLY CHIP FILTER — ONLY FOR FULL MODE
       // ======================================================
       function applyChipFilter(items) {
-        const f = window.__ddState.rowFilter;
-        if (!f) return items;
-
-        // Only filter in FULL VIEW
+        // If in drilldown mode → do NOT filter
         if (window.__ddState.product || window.__ddState.usecase) return items;
 
+        // FULL MODE → filter by first chip only
+        if (window.__ddState.filters.length === 0) return items;
+
+        const f = window.__ddState.filters[0];
         return items.filter(i => i.name === f.value);
       }
 
       // ======================================================
-      // TABLE RENDERERS
+      // RENDERERS
       // ======================================================
       function renderProductTable(items) {
         window.__ddState.level = "product";
@@ -138,7 +144,8 @@ export default function handler(req, res) {
         items.forEach(p => {
           html += \`
             <tr class="dd-row" data-value="\${p.name}">
-              <td>\${p.name}</td><td>\${p.adsCount}</td>
+              <td>\${p.name}</td>
+              <td>\${p.adsCount}</td>
               <td>$\${p.spend.toLocaleString()}</td>
               <td>\${p.impressions.toLocaleString()}</td>
             </tr>\`;
@@ -151,9 +158,8 @@ export default function handler(req, res) {
             const product = row.dataset.value;
 
             window.__ddState.filters = [
-  { type: "product", value: product }
-];
-
+              { type: "product", value: product }
+            ];
             window.__ddState.product = product;
 
             renderChips();
@@ -177,7 +183,8 @@ export default function handler(req, res) {
         items.forEach(uc => {
           html += \`
             <tr class="dd-row" data-value="\${uc.name}">
-              <td>\${uc.name}</td><td>\${uc.adsCount}</td>
+              <td>\${uc.name}</td>
+              <td>\${uc.adsCount}</td>
               <td>$\${uc.spend.toLocaleString()}</td>
               <td>\${uc.impressions.toLocaleString()}</td>
             </tr>\`;
@@ -190,7 +197,6 @@ export default function handler(req, res) {
             const usecase = row.dataset.value;
 
             window.__ddState.filters.push({ type: "usecase", value: usecase });
-
             window.__ddState.usecase = usecase;
 
             renderChips();
@@ -214,7 +220,8 @@ export default function handler(req, res) {
         items.forEach(a => {
           html += \`
             <tr class="dd-row" data-value="\${a.name}">
-              <td>\${a.name}</td><td>\${a.adsCount}</td>
+              <td>\${a.name}</td>
+              <td>\${a.adsCount}</td>
               <td>$\${a.spend.toLocaleString()}</td>
               <td>\${a.impressions.toLocaleString()}</td>
             </tr>\`;
