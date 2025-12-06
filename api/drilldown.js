@@ -20,7 +20,7 @@ export default function handler(req, res) {
         product: null,
         usecase: null,
         angle: null,
-        rowFilter: null
+        filters: []    // array of {type, value}
       };
 
       // ======================================================
@@ -63,30 +63,49 @@ export default function handler(req, res) {
       // CHIP UI
       // ======================================================
       function renderChips() {
-        chipContainer.innerHTML = "";
-        const f = window.__ddState.rowFilter;
-        if (!f) return;
+  chipContainer.innerHTML = "";
 
-        const chip = document.createElement("div");
-        chip.className = "dd-chip";
+  window.__ddState.filters.forEach((f, index) => {
+    const chip = document.createElement("div");
+    chip.className = "dd-chip";
 
-        chip.innerHTML = \`
-          <span class="dd-chip-label">\${f.type}: \${f.value}</span>
-          <div class="dd-chip-remove">✕</div>
-        \`;
+    chip.innerHTML = \`
+      <span class="dd-chip-label">\${f.type}: \${f.value}</span>
+      <div class="dd-chip-remove">✕</div>
+    \`;
 
-        chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
-          window.__ddState.rowFilter = null;
+    chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
+      // Remove this chip
+      window.__ddState.filters.splice(index, 1);
 
-          if (window.__ddState.level === "product") loadProducts();
-          if (window.__ddState.level === "usecase") loadAllUseCases();
-          if (window.__ddState.level === "angle")   loadAllAngles();
+      // Reset drilldown state based on remaining chips
+      window.__ddState.product = null;
+      window.__ddState.usecase = null;
 
-          renderChips();
-        });
+      window.__ddState.filters.forEach(ch => {
+        if (ch.type === "product") window.__ddState.product = ch.value;
+        if (ch.type === "usecase") window.__ddState.usecase = ch.value;
+      });
 
-        chipContainer.appendChild(chip);
+      // Reload correct level
+      if (window.__ddState.level === "product") loadProducts();
+      if (window.__ddState.level === "usecase") {
+        if (window.__ddState.product) loadUseCasesFiltered(window.__ddState.product);
+        else loadAllUseCases();
       }
+      if (window.__ddState.level === "angle") {
+        if (window.__ddState.product && window.__ddState.usecase)
+          loadAnglesFiltered(window.__ddState.product, window.__ddState.usecase);
+        else loadAllAngles();
+      }
+
+      renderChips();
+    });
+
+    chipContainer.appendChild(chip);
+  });
+}
+
 
       // ======================================================
       // APPLY CHIP FILTER — ONLY FOR FULL MODE
@@ -131,7 +150,10 @@ export default function handler(req, res) {
           row.addEventListener("click", () => {
             const product = row.dataset.value;
 
-            window.__ddState.rowFilter = { type: "product", value: product };
+            window.__ddState.filters = [
+  { type: "product", value: product }
+];
+
             window.__ddState.product = product;
 
             renderChips();
@@ -167,7 +189,8 @@ export default function handler(req, res) {
           row.addEventListener("click", () => {
             const usecase = row.dataset.value;
 
-            window.__ddState.rowFilter = { type: "usecase", value: usecase };
+            window.__ddState.filters.push({ type: "usecase", value: usecase });
+
             window.__ddState.usecase = usecase;
 
             renderChips();
