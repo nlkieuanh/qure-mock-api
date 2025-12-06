@@ -19,7 +19,6 @@ export default function handler(req, res) {
         level: "product",
         product: null,
         usecase: null,
-        angle: null,
         filters: [] // array of {type, value}
       };
 
@@ -41,17 +40,15 @@ export default function handler(req, res) {
             const level = btn.dataset.tab;
             if (!level) return;
 
-            // RESET ALL FILTERS + DRILLDOWN STATE
+            // RESET ALL FILTERS + STATE WHEN USER SWITCH TAB
             window.__ddState.level = level;
             window.__ddState.product = null;
             window.__ddState.usecase = null;
-            window.__ddState.angle = null;
-            window.__ddState.filters = []; // reset all chips
+            window.__ddState.filters = [];
 
             renderChips();
             updateTabs();
 
-            // FULL VIEW logic
             if (level === "product") loadProducts();
             if (level === "usecase") loadAllUseCases();
             if (level === "angle")   loadAllAngles();
@@ -75,19 +72,19 @@ export default function handler(req, res) {
           \`;
 
           chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
-            // Remove only this chip
+            // Remove chip
             window.__ddState.filters.splice(index, 1);
 
-            // Reset drilldown state based on remaining chips
+            // Reset drilldown state from filters
             window.__ddState.product = null;
             window.__ddState.usecase = null;
 
             window.__ddState.filters.forEach(ch => {
-              if (ch.type === "product") window.__ddState.product = ch.value;
-              if (ch.type === "usecase") window.__ddState.usecase = ch.value;
+              if (ch.type === "product")  window.__ddState.product = ch.value;
+              if (ch.type === "usecase")  window.__ddState.usecase = ch.value;
             });
 
-            // Reload correct view
+            // RELOAD DATA BASED ON CURRENT TAB
             if (window.__ddState.level === "product") {
               loadProducts();
             }
@@ -98,11 +95,11 @@ export default function handler(req, res) {
             }
 
             if (window.__ddState.level === "angle") {
-              if (window.__ddState.product && window.__ddState.usecase) {
-                loadAnglesFiltered(window.__ddState.product, window.__ddState.usecase);
-              } else {
-                loadAllAngles();
-              }
+              // NEW OR LOGIC
+              loadAnglesOR(
+                window.__ddState.product,
+                window.__ddState.usecase
+              );
             }
 
             renderChips();
@@ -113,13 +110,10 @@ export default function handler(req, res) {
       }
 
       // ======================================================
-      // APPLY CHIP FILTER — ONLY FOR FULL MODE
+      // APPLY CHIP FILTER ONLY IN FULL MODE
       // ======================================================
       function applyChipFilter(items) {
-        // If in drilldown mode → do NOT filter
         if (window.__ddState.product || window.__ddState.usecase) return items;
-
-        // FULL MODE → filter by first chip only
         if (window.__ddState.filters.length === 0) return items;
 
         const f = window.__ddState.filters[0];
@@ -127,7 +121,7 @@ export default function handler(req, res) {
       }
 
       // ======================================================
-      // RENDERERS
+      // RENDER PRODUCT TABLE
       // ======================================================
       function renderProductTable(items) {
         window.__ddState.level = "product";
@@ -168,6 +162,9 @@ export default function handler(req, res) {
         });
       }
 
+      // ======================================================
+      // RENDER USE CASE TABLE
+      // ======================================================
       function renderUseCaseTable(items) {
         window.__ddState.level = "usecase";
         updateTabs();
@@ -200,11 +197,17 @@ export default function handler(req, res) {
             window.__ddState.usecase = usecase;
 
             renderChips();
-            loadAnglesFiltered(window.__ddState.product, usecase);
+            loadAnglesOR(
+              window.__ddState.product,
+              usecase
+            );
           });
         });
       }
 
+      // ======================================================
+      // RENDER ANGLE TABLE
+      // ======================================================
       function renderAngleTable(items) {
         window.__ddState.level = "angle";
         updateTabs();
@@ -257,8 +260,19 @@ export default function handler(req, res) {
           .then(d => renderUseCaseTable(d.usecases));
       }
 
-      function loadAnglesFiltered(product, usecase) {
-        fetch(API_ANGLES + "?product=" + encodeURIComponent(product) + "&usecase=" + encodeURIComponent(usecase))
+      // ======================================================
+      // NEW: OR LOGIC FOR ANGLES
+      // ======================================================
+      function loadAnglesOR(product, usecase) {
+        let url = API_ANGLES;
+
+        const params = [];
+        if (product) params.push("product=" + encodeURIComponent(product));
+        if (usecase) params.push("usecase=" + encodeURIComponent(usecase));
+
+        if (params.length > 0) url += "?" + params.join("&");
+
+        fetch(url)
           .then(r => r.json())
           .then(d => renderAngleTable(d.angles));
       }
