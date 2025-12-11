@@ -47,7 +47,7 @@ export default function handler(req, res) {
       const s = new Date(start);
       const e = new Date(end);
       filtered = filtered.filter(ad => {
-        const d = new Date(ad.date_start || ad.date || 0);
+        const d = new Date(ad.start_date || ad.date || 0);
         return d >= s && d <= e;
       });
     }
@@ -87,7 +87,7 @@ export default function handler(req, res) {
         g.clicks += Number(ad.clicks) || 0;
 
         /* ---- Timeseries ---- */
-        const date = ad.date_start || ad.date || null;
+        const date = ad.start_date || ad.date || null;
         if (date) {
           if (!g.timeseries[date]) {
             g.timeseries[date] = {
