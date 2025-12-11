@@ -16,10 +16,15 @@ document.addEventListener("DOMContentLoaded", function () {
     const tableWrapper   = card.querySelector(".table-render");
     const canvas         = card.querySelector("canvas");
 
-    /* ---- Webflow Metric Dropdown ---- */
+    /* ---- Webflow Metric Dropdown ----
+       Webflow produces multiple classes:
+       class="Filter Dropdown Toggle"
+       class="Filter Dropdown List Inner"
+       => Selector must use dot-join: .Filter.Dropdown.Toggle
+    ------------------------------------------------------------------------*/
     const metricDropdown       = card.querySelector(".chart-metric-dd-select");
-    const metricToggle         = metricDropdown?.querySelector(".metric-dd-toggle");
-    const metricList           = metricDropdown?.querySelector(".metric-dd-list-inner");
+    const metricToggle         = metricDropdown?.querySelector(".Filter.Dropdown.Toggle");
+    const metricList           = metricDropdown?.querySelector(".Filter.Dropdown.List.Inner");
     const metricSelectedLabel  = metricDropdown?.querySelector(".chart-metric-dd-selected");
 
     const platformSelect = card.querySelector(".platform-select");
@@ -98,10 +103,12 @@ document.addEventListener("DOMContentLoaded", function () {
         item.addEventListener("click", () => {
           currentMetric = col;
 
-          // Update label in UI
+          // Update the visible selected label
           if (metricSelectedLabel) {
             metricSelectedLabel.textContent = pretty(col);
           }
+
+          // Update the toggle label
           if (metricToggle) {
             metricToggle.textContent = pretty(col);
           }
@@ -110,7 +117,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
 
-      // Set default label
+      // Initial selected label
       if (metricSelectedLabel) metricSelectedLabel.textContent = pretty(currentMetric);
       if (metricToggle)        metricToggle.textContent        = pretty(currentMetric);
     }
@@ -118,7 +125,6 @@ document.addEventListener("DOMContentLoaded", function () {
     /* =========================================================================
         TABLE RENDER + SORT + CHECKBOX
     ========================================================================= */
-
     let sortState = { col: null, dir: null };
 
     function renderTable(cols, rows) {
@@ -216,7 +222,7 @@ document.addEventListener("DOMContentLoaded", function () {
         data: { labels, datasets },
         options: {
           responsive: true,
-          maintainAspectRatio: false,     // ⭐ FIX CANVAS SIZE
+          maintainAspectRatio: false,
           interaction: { mode: "index", intersect: false },
           scales: {
             x: { ticks: { maxRotation: 45, minRotation: 45 } }
@@ -224,7 +230,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
 
-      // ⭐ Remove inline sizes added by Chart.js
+      /* ⭐ Remove inline sizes added by Chart.js */
       canvas.removeAttribute("width");
       canvas.removeAttribute("height");
       canvas.style.width  = "100%";
