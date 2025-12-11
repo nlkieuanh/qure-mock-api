@@ -1,148 +1,69 @@
-import fs from "fs";
-import path from "path";
+import { loadAds, extractDate, aggregateMetrics, finalizeRow } from "./_utils";
 
 export default function handler(req, res) {
   try {
-    const filePath = path.join(process.cwd(), "data", "ads.json");
-    const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const ads = loadAds();
+    const bucket = {};
 
-    const url = new URL(req.url, "http://localhost");
+    ads.forEach(ad => {
+      let keys = [];
+      if (Array.isArray(ad.f_angles)) keys = ad.f_angles;
+      else if (typeof ad.f_angles === "string") keys = [ad.f_angles];
+      else keys = ["Unknown"];
 
-    const product  = url.searchParams.get("product");
-    const usecase  = url.searchParams.get("usecase");
-    const platform = url.searchParams.get("platform");
-    const start    = url.searchParams.get("start");
-    const end      = url.searchParams.get("end");
+      const date = extractDate(ad);
+      const { spend, revenue, ctr } = aggregateMetrics(ad);
 
-    /* ---------------- CORS ---------------- */
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-
-    if (req.method === "OPTIONS") {
-      return res.status(200).end();
-    }
-
-    /* ---------------- FILTER ADS ---------------- */
-    let filtered = ads.slice();
-
-    if (product) {
-      filtered = filtered.filter(ad => ad.f_products === product);
-    }
-
-    if (usecase) {
-      filtered = filtered.filter(ad => {
-        let uc = [];
-        if (Array.isArray(ad.f_use_case)) uc = ad.f_use_case;
-        else if (typeof ad.f_use_case === "string") uc = [ad.f_use_case];
-        return uc.includes(usecase);
-      });
-    }
-
-    if (platform) {
-      filtered = filtered.filter(ad => ad.platform === platform);
-    }
-
-    if (start && end) {
-      const s = new Date(start);
-      const e = new Date(end);
-      filtered = filtered.filter(ad => {
-        const d = new Date(ad.date_start || ad.date || 0);
-        return d >= s && d <= e;
-      });
-    }
-
-    /* ---------------- GROUP BY ANGLE ---------------- */
-    const groups = {};
-
-    filtered.forEach(ad => {
-      let angles = [];
-
-      if (Array.isArray(ad.f_angles) && ad.f_angles.length > 0) {
-        angles = ad.f_angles;
-      } else if (typeof ad.f_angles === "string" && ad.f_angles.trim() !== "") {
-        angles = [ad.f_angles.trim()];
-      } else {
-        angles = ["Unknown"];
-      }
-
-      angles.forEach(angle => {
-        if (!groups[angle]) {
-          groups[angle] = {
-            name: angle,
+      keys.forEach(key => {
+        if (!bucket[key]) {
+          bucket[key] = {
+            name: key,
             adsCount: 0,
             spend: 0,
             revenue: 0,
-            impressions: 0,
-            clicks: 0,
+            ctrTotal: 0,
+            ctrCount: 0,
             timeseries: {}
           };
         }
 
-        const g = groups[angle];
-        g.adsCount += 1;
-        g.spend += Number(ad.spend) || 0;
-        g.revenue += Number(ad.revenue) || 0;
-        g.impressions += Number(ad.impressions) || 0;
-        g.clicks += Number(ad.clicks) || 0;
+        const row = bucket[key];
+        row.adsCount++;
+        row.spend += spend;
+        row.revenue += revenue;
+        row.ctrTotal += ctr;
+        row.ctrCount += ctr > 0 ? 1 : 0;
 
-        /* ---- Timeseries ---- */
-        const date = ad.date_start || ad.date || null;
         if (date) {
-          if (!g.timeseries[date]) {
-            g.timeseries[date] = {
+          if (!row.timeseries[date]) {
+            row.timeseries[date] = {
               date,
               adsCount: 0,
               spend: 0,
               revenue: 0,
-              impressions: 0,
-              clicks: 0
+              ctrTotal: 0,
+              ctrCount: 0
             };
           }
-
-          g.timeseries[date].adsCount += 1;
-          g.timeseries[date].spend += Number(ad.spend) || 0;
-          g.timeseries[date].revenue += Number(ad.revenue) || 0;
-          g.timeseries[date].impressions += Number(ad.impressions) || 0;
-          g.timeseries[date].clicks += Number(ad.clicks) || 0;
+          const ts = row.timeseries[date];
+          ts.adsCount++;
+          ts.spend += spend;
+          ts.revenue += revenue;
+          ts.ctrTotal += ctr;
+          ts.ctrCount += ctr > 0 ? 1 : 0;
         }
       });
     });
 
-    /* ---------------- FORMAT OUTPUT ---------------- */
-    const rows = Object.values(groups).map(g => {
-      const ts = Object.values(g.timeseries).sort((a, b) =>
-        a.date.localeCompare(b.date)
-      );
+    const rows = Object.values(bucket).map(finalizeRow);
 
-      return {
-        name: g.name,
-        adsCount: g.adsCount,
-        spend: g.spend,
-        revenue: g.revenue,
-        revPerAd: g.adsCount > 0 ? g.revenue / g.adsCount : 0,
-        roas: g.spend > 0 ? g.revenue / g.spend : 0,
-        ctr: g.impressions > 0 ? g.clicks / g.impressions : 0,
-        timeseries: ts
-      };
-    });
-
-    /* ---------------- RETURN UNIVERSAL FORMAT ---------------- */
     return res.status(200).json({
-      columns: [
-        "name",
-        "adsCount",
-        "spend",
-        "revenue",
-        "revPerAd",
-        "roas",
-        "ctr"
-      ],
+      columns: ["name", "adsCount", "spend", "revenue", "revPerAd", "roas", "ctr"],
       rows
     });
 
   } catch (err) {
-    console.error("API ERROR /api/angles:", err);
+    console.error(err);
     return res.status(500).json({ error: err.message });
   }
 }
