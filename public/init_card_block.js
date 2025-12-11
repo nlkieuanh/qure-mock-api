@@ -12,40 +12,41 @@ document.addEventListener("DOMContentLoaded", function () {
     const apiUrl = card.dataset.api;
     const defaultMetric = card.dataset.defaultMetric || "adsCount";
 
-    const tableWrapper = card.querySelector(".table-render");
-    const canvas = card.querySelector("canvas");
+    const tableWrapper   = card.querySelector(".table-render");
+    const canvas         = card.querySelector("canvas");
 
-    const metricSelect = card.querySelector(".metric-select");
+    /* Webflow dropdown metric structure */
+    const metricDropdown = card.querySelector(".chart-metric-dd-select");
+    const metricToggle   = metricDropdown?.querySelector(".Filter Dropdown Toggle");
+    const metricList     = metricDropdown?.querySelector(".Filter Dropdown List Inner");
+
     const platformSelect = card.querySelector(".platform-select");
-    const dateSelect = card.querySelector(".date-select");
+    const dateSelect     = card.querySelector(".date-select");
 
     let tableData = [];
-    let chart = null;
+    let columns   = [];
+    let chart     = null;
     let selectedKeys = new Set();
-    let columns = [];
+    let currentMetric = defaultMetric;
 
     if (platformSelect) platformSelect.addEventListener("change", loadData);
-    if (dateSelect) dateSelect.addEventListener("change", loadData);
-    if (metricSelect) metricSelect.addEventListener("change", updateChart);
+    if (dateSelect)     dateSelect.addEventListener("change", loadData);
 
     loadData();
 
     /* =========================================================================
-       BUILD API QUERY URL (platform / date range)
+       BUILD URL WITH FILTERS
     ========================================================================= */
     function buildUrl() {
       const params = [];
 
-      if (platformSelect && platformSelect.value) {
+      if (platformSelect?.value)
         params.push("platform=" + encodeURIComponent(platformSelect.value));
-      }
 
-      if (dateSelect && dateSelect.value) {
-        const end = new Date();
+      if (dateSelect?.value) {
+        const end   = new Date();
         const start = new Date();
-
         start.setDate(end.getDate() - Number(dateSelect.value));
-
         params.push("start=" + start.toISOString());
         params.push("end=" + end.toISOString());
       }
@@ -60,62 +61,70 @@ document.addEventListener("DOMContentLoaded", function () {
       fetch(buildUrl())
         .then(r => r.json())
         .then(json => {
-          tableData = json.rows || [];
-          columns = json.columns || [];
+          columns   = json.columns || [];
+          tableData = json.rows    || [];
 
           buildMetricDropdown(columns);
           renderTable(columns, tableData);
           updateChart();
         })
-        .catch(err => console.error("LOAD DATA ERROR:", err));
+        .catch(console.error);
     }
 
     /* =========================================================================
-       AUTOGENERATE METRIC DROPDOWN
+       BUILD METRIC DROPDOWN (Webflow custom)
     ========================================================================= */
     function buildMetricDropdown(cols) {
-      if (!metricSelect) return;
+      if (!metricList) return;
 
-      metricSelect.innerHTML = "";
+      metricList.innerHTML = ""; // reset items
 
       cols.forEach(col => {
-        if (col === "name") return; // skip name
+        if (col === "name") return; // skip
 
-        const opt = document.createElement("option");
-        opt.value = col;
-        opt.textContent = pretty(col);
+        const item = document.createElement("div");
+        item.className = "Filter Dropdown Item";
 
-        metricSelect.appendChild(opt);
+        const text = document.createElement("div");
+        text.className = "dropdown-item-text";
+        text.textContent = pretty(col);
+
+        item.appendChild(text);
+        metricList.appendChild(item);
+
+        item.addEventListener("click", () => {
+          currentMetric = col;
+          if (metricToggle) metricToggle.textContent = pretty(col);
+          updateChart();
+        });
       });
 
-      // default metric
-      metricSelect.value = defaultMetric;
+      // Set default label
+      if (metricToggle) metricToggle.textContent = pretty(currentMetric);
     }
 
     /* =========================================================================
-        RENDER TABLE (Styled by .adv-channel-table)
+       RENDER TABLE WITH CHECKBOX + SORT
     ========================================================================= */
     function renderTable(cols, rows) {
       let html = '<div class="adv-channel-table-wrapper">';
       html += '<table class="adv-channel-table">';
       html += '<thead><tr>';
 
-      html += '<th></th>'; // checkbox col
+      html += '<th></th>';
 
       cols.forEach(col => {
-        html += '<th data-col="' + col + '">' + pretty(col) + "</th>";
+        html += `<th data-col="${col}">${pretty(col)}</th>`;
       });
 
       html += "</tr></thead><tbody>";
 
       rows.forEach(row => {
-        const key = row.name;
-
-        html += '<tr data-key="' + key + '">';
-        html += '<td><input type="checkbox" class="row-check" data-key="' + key + '"></td>';
+        html += `<tr data-key="${row.name}">`;
+        html += `<td><input type="checkbox" class="row-check" data-key="${row.name}" checked></td>`;
 
         cols.forEach(col => {
-          html += "<td>" + format(row[col]) + "</td>";
+          html += `<td>${format(row[col])}</td>`;
         });
 
         html += "</tr>";
@@ -124,85 +133,48 @@ document.addEventListener("DOMContentLoaded", function () {
       html += "</tbody></table></div>";
       tableWrapper.innerHTML = html;
 
-      // checkbox events
+      selectedKeys = new Set(rows.map(r => r.name));
+
       tableWrapper.querySelectorAll(".row-check").forEach(cb => {
         cb.addEventListener("change", () => {
-          const key = cb.dataset.key;
-
-          if (cb.checked) selectedKeys.add(key);
-          else selectedKeys.delete(key);
-
+          const k = cb.dataset.key;
+          if (cb.checked) selectedKeys.add(k);
+          else selectedKeys.delete(k);
           updateChart();
         });
       });
-
-      // sorting events
-      tableWrapper.querySelectorAll("th[data-col]").forEach(th => {
-        th.addEventListener("click", () => onSort(th.dataset.col));
-      });
     }
 
     /* =========================================================================
-       SORT
-    ========================================================================= */
-    let sortState = { col: null, dir: null };
-
-    function onSort(col) {
-      if (sortState.col !== col) {
-        sortState = { col, dir: "asc" };
-      } else {
-        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
-      }
-
-      tableData.sort((a, b) => {
-        const A = a[col] || 0;
-        const B = b[col] || 0;
-        return sortState.dir === "asc" ? A - B : B - A;
-      });
-
-      renderTable(columns, tableData);
-    }
-
-    /* =========================================================================
-       CHART (TIMESERIES MULTI-LINE)
+       CHART (MULTI-LINE TIMESERIES)
     ========================================================================= */
     function updateChart() {
-      const metric = metricSelect ? metricSelect.value : defaultMetric;
-
       if (chart) chart.destroy();
 
-      const selected = selectedKeys.size > 0
-        ? [...selectedKeys]
-        : tableData.map(r => r.name);
-
       const datasets = [];
+      const lines = [...selectedKeys];
 
-      selected.forEach(name => {
-        const row = tableData.find(r => r.name === name);
+      lines.forEach(line => {
+        const row = tableData.find(r => r.name === line);
         if (!row || !row.timeseries) return;
 
-        const ts = row.timeseries.sort((a, b) => a.date.localeCompare(b.date));
+        const sorted = row.timeseries.sort((a, b) => a.date.localeCompare(b.date));
 
         datasets.push({
-          label: name + " - " + pretty(metric),
-          data: ts.map(d => d[metric] || 0),
+          label: `${row.name} - ${pretty(currentMetric)}`,
+          data: sorted.map(d => d[currentMetric] || 0),
           fill: false
         });
       });
 
-      const firstSeries = tableData[0]?.timeseries || [];
-      const labels = firstSeries.map(d => d.date);
+      const labels = tableData[0]?.timeseries?.map(t => t.date) || [];
 
       chart = new Chart(canvas, {
         type: "line",
-        data: {
-          labels,
-          datasets
-        },
+        data: { labels, datasets },
         options: {
           responsive: true,
-          interaction: { mode: "index", intersect: false },
-          stacked: false
+          interaction: { mode: "index", intersect: false }
         }
       });
     }
@@ -211,7 +183,9 @@ document.addEventListener("DOMContentLoaded", function () {
        HELPERS
     ========================================================================= */
     function pretty(str) {
-      return str.replace(/([A-Z])/g, " $1").replace(/^\w/, c => c.toUpperCase());
+      return str
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^\w/, c => c.toUpperCase());
     }
 
     function format(v) {
