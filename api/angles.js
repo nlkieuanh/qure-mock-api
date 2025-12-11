@@ -10,72 +10,86 @@ export default function handler(req, res) {
     const product = url.searchParams.get("product");
     const usecase = url.searchParams.get("usecase");
 
+    // CORS
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
 
-    if (req.method === "OPTIONS") {
-      return res.status(200).end();
-    }
+    if (req.method === "OPTIONS") return res.status(200).end();
 
-    // ------------------------------------------------------
-    // GROUPING FUNCTION (reused for full and filtered mode)
-    // ------------------------------------------------------
     const map = {};
 
     ads.forEach(ad => {
-      // Filter by product
       if (product && ad.f_products !== product) return;
 
-      // Extract usecases
-      let useCases = [];
+      let uc = [];
+      if (Array.isArray(ad.f_use_case)) uc = ad.f_use_case;
+      else if (typeof ad.f_use_case === "string") uc = [ad.f_use_case];
 
-      if (Array.isArray(ad.f_use_case) && ad.f_use_case.length > 0) {
-        useCases = ad.f_use_case;
-      } else if (typeof ad.f_use_case === "string" && ad.f_use_case.trim() !== "") {
-        useCases = [ad.f_use_case.trim()];
-      } else {
-        useCases = ["Unknown"];
-      }
+      if (usecase && !uc.includes(usecase)) return;
 
-      // Filter by usecase when provided
-      if (usecase && !useCases.includes(usecase)) return;
-
-      // Extract angles
       let angles = [];
+      if (Array.isArray(ad.f_angles)) angles = ad.f_angles;
+      else if (typeof ad.f_angles === "string") angles = [ad.f_angles];
+      else angles = ["Unknown"];
 
-      if (Array.isArray(ad.f_angles) && ad.f_angles.length > 0) {
-        angles = ad.f_angles;
-      } else if (typeof ad.f_angles === "string" && ad.f_angles.trim() !== "") {
-        angles = [ad.f_angles.trim()];
-      } else {
-        angles = ["Unknown"];
-      }
+      const date = ad.date || ad.created_at || ad.timestamp || null;
 
-      // Grouping
       angles.forEach(name => {
         if (!map[name]) {
           map[name] = {
             name,
             adsCount: 0,
             spend: 0,
-            impressions: 0
+            revenue: 0,
+            roas: 0,
+            ctr: 0,
+            timeseries: {}
           };
         }
 
         map[name].adsCount += 1;
         map[name].spend += Number(ad.spend) || 0;
-        map[name].impressions += Number(ad.impressions) || 0;
+        map[name].revenue += Number(ad.revenue) || 0;
+
+        // Timeseries (group by date)
+        if (date) {
+          if (!map[name].timeseries[date]) {
+            map[name].timeseries[date] = {
+              date,
+              adsCount: 0,
+              spend: 0,
+              revenue: 0
+            };
+          }
+
+          map[name].timeseries[date].adsCount += 1;
+          map[name].timeseries[date].spend += Number(ad.spend) || 0;
+          map[name].timeseries[date].revenue += Number(ad.revenue) || 0;
+        }
       });
     });
 
-    const rows = Object.values(map);
+    const rows = Object.values(map).map(r => {
+      const tsArray = Object.values(r.timeseries).sort((a, b) =>
+        a.date.localeCompare(b.date)
+      );
 
-    // ------------------------------------------------------
-    // UNIVERSAL OUTPUT SCHEMA (used by UniversalTable)
-    // ------------------------------------------------------
+      const roas = r.spend > 0 ? r.revenue / r.spend : 0;
+
+      return {
+        name: r.name,
+        adsCount: r.adsCount,
+        spend: r.spend,
+        revenue: r.revenue,
+        roas,
+        ctr: 0, 
+        timeseries: tsArray
+      };
+    });
+
     return res.status(200).json({
-      columns: ["name", "adsCount", "spend", "impressions"],
+      columns: ["name", "adsCount", "spend", "revenue", "roas", "ctr"],
       rows
     });
 
