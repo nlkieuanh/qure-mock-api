@@ -23,8 +23,8 @@ document.addEventListener("DOMContentLoaded", function () {
        => Selector must use dot-join: .Filter.Dropdown.Toggle
     ------------------------------------------------------------------------*/
     const metricDropdown       = card.querySelector(".chart-metric-dd-select");
-    const metricToggle         = metricDropdown?.querySelector(".Filter-Dropdown-Toggle");
-    const metricList           = metricDropdown?.querySelector(".Filter-Dropdown-List-Inner");
+    const metricToggle         = metricDropdown?.querySelector(".filter-dropdown-toggle");
+    const metricList           = metricDropdown?.querySelector(".filter-dropdown-list-inner");
     const metricSelectedLabel  = metricDropdown?.querySelector(".chart-metric-dd-selected");
 
     const platformSelect = card.querySelector(".platform-select");
@@ -91,7 +91,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (col === "name" || col === "date") return;
 
         const item = document.createElement("div");
-        item.className = "Filter-Dropdown-Item";
+        item.className = "filter-dropdown-item";
 
         const text = document.createElement("div");
         text.className = "dropdown-item-text";
