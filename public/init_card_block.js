@@ -91,7 +91,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (col === "name" || col === "date") return;
 
         const item = document.createElement("div");
-        item.className = "Filter Dropdown Item";
+        item.className = "Filter-Dropdown-Item";
 
         const text = document.createElement("div");
         text.className = "dropdown-item-text";
