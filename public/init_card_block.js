@@ -6,16 +6,17 @@ document.addEventListener("DOMContentLoaded", function () {
   cards.forEach(initCardBlock);
 
   /* =========================================================================
-      INIT ONE CARD
+      INIT ONE CARD BLOCK
   ========================================================================= */
   function initCardBlock(card) {
-    const apiUrl = card.dataset.api;
-    const defaultMetric = card.dataset.defaultMetric || "adsCount";
+
+    const apiUrl         = card.dataset.api;
+    const defaultMetric  = card.dataset.defaultMetric || "adsCount";
 
     const tableWrapper   = card.querySelector(".table-render");
     const canvas         = card.querySelector("canvas");
 
-    /* Webflow dropdown metric structure */
+    /* ---- Webflow Metric Dropdown ---- */
     const metricDropdown = card.querySelector(".chart-metric-dd-select");
     const metricToggle   = metricDropdown?.querySelector(".Filter Dropdown Toggle");
     const metricList     = metricDropdown?.querySelector(".Filter Dropdown List Inner");
@@ -23,11 +24,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const platformSelect = card.querySelector(".platform-select");
     const dateSelect     = card.querySelector(".date-select");
 
-    let tableData = [];
-    let columns   = [];
-    let chart     = null;
+    let columns      = [];
+    let tableData    = [];
     let selectedKeys = new Set();
     let currentMetric = defaultMetric;
+
+    let chart = null;
 
     if (platformSelect) platformSelect.addEventListener("change", loadData);
     if (dateSelect)     dateSelect.addEventListener("change", loadData);
@@ -35,7 +37,7 @@ document.addEventListener("DOMContentLoaded", function () {
     loadData();
 
     /* =========================================================================
-       BUILD URL WITH FILTERS
+        BUILD URL WITH FILTERS
     ========================================================================= */
     function buildUrl() {
       const params = [];
@@ -55,14 +57,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-       FETCH DATA FROM API
+        FETCH DATA
     ========================================================================= */
     function loadData() {
       fetch(buildUrl())
         .then(r => r.json())
         .then(json => {
           columns   = json.columns || [];
-          tableData = json.rows    || [];
+          tableData = json.rows || [];
 
           buildMetricDropdown(columns);
           renderTable(columns, tableData);
@@ -72,15 +74,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-       BUILD METRIC DROPDOWN (Webflow custom)
+        BUILD METRIC DROPDOWN (WEBFLOW CUSTOM)
     ========================================================================= */
     function buildMetricDropdown(cols) {
       if (!metricList) return;
 
-      metricList.innerHTML = ""; // reset items
+      metricList.innerHTML = "";
 
       cols.forEach(col => {
-        if (col === "name") return; // skip
+        if (col === "name" || col === "date") return;
 
         const item = document.createElement("div");
         item.className = "Filter Dropdown Item";
@@ -94,30 +96,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
         item.addEventListener("click", () => {
           currentMetric = col;
-          if (metricToggle) metricToggle.textContent = pretty(col);
+          metricToggle.textContent = pretty(col);
           updateChart();
         });
       });
 
-      // Set default label
-      if (metricToggle) metricToggle.textContent = pretty(currentMetric);
+      metricToggle.textContent = pretty(currentMetric);
     }
 
     /* =========================================================================
-       RENDER TABLE WITH CHECKBOX + SORT
+        TABLE RENDER + SORT + CHECKBOX
     ========================================================================= */
+
+    let sortState = { col: null, dir: null };
+
     function renderTable(cols, rows) {
       let html = '<div class="adv-channel-table-wrapper">';
       html += '<table class="adv-channel-table">';
       html += '<thead><tr>';
-
       html += '<th></th>';
 
       cols.forEach(col => {
-        html += `<th data-col="${col}">${pretty(col)}</th>`;
+        html += `<th data-col="${col}" class="sortable">${pretty(col)}</th>`;
       });
 
-      html += "</tr></thead><tbody>";
+      html += '</tr></thead><tbody>';
 
       rows.forEach(row => {
         html += `<tr data-key="${row.name}">`;
@@ -127,65 +130,105 @@ document.addEventListener("DOMContentLoaded", function () {
           html += `<td>${format(row[col])}</td>`;
         });
 
-        html += "</tr>";
+        html += `</tr>`;
       });
 
-      html += "</tbody></table></div>";
+      html += '</tbody></table></div>';
+
       tableWrapper.innerHTML = html;
 
+      /* Pre-select all rows */
       selectedKeys = new Set(rows.map(r => r.name));
 
+      /* Checkbox toggle */
       tableWrapper.querySelectorAll(".row-check").forEach(cb => {
         cb.addEventListener("change", () => {
-          const k = cb.dataset.key;
-          if (cb.checked) selectedKeys.add(k);
-          else selectedKeys.delete(k);
+          const key = cb.dataset.key;
+          if (cb.checked) selectedKeys.add(key);
+          else selectedKeys.delete(key);
           updateChart();
         });
       });
+
+      /* Sorting */
+      tableWrapper.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => sortColumn(th.dataset.col));
+      });
+    }
+
+    /* ---- Sorting handler ---- */
+    function sortColumn(col) {
+      if (sortState.col !== col) {
+        sortState = { col, dir: "asc" };
+      } else {
+        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+      }
+
+      tableData.sort((a, b) => {
+        const A = a[col] ?? 0;
+        const B = b[col] ?? 0;
+        return sortState.dir === "asc" ? A - B : B - A;
+      });
+
+      renderTable(columns, tableData);
+      updateChart();
     }
 
     /* =========================================================================
-       CHART (MULTI-LINE TIMESERIES)
+        CHART RENDER (FIXED CANVAS)
     ========================================================================= */
     function updateChart() {
+      if (!canvas) return;
       if (chart) chart.destroy();
 
-      const datasets = [];
-      const lines = [...selectedKeys];
+      const metric = currentMetric;
 
-      lines.forEach(line => {
-        const row = tableData.find(r => r.name === line);
-        if (!row || !row.timeseries) return;
+      const labels = tableData[0]?.timeseries?.map(ts => ts.date) || [];
+
+      const datasets = [];
+
+      [...selectedKeys].forEach(name => {
+        const row = tableData.find(r => r.name === name);
+        if (!row?.timeseries) return;
 
         const sorted = row.timeseries.sort((a, b) => a.date.localeCompare(b.date));
 
         datasets.push({
-          label: `${row.name} - ${pretty(currentMetric)}`,
-          data: sorted.map(d => d[currentMetric] || 0),
+          label: `${row.name} - ${pretty(metric)}`,
+          data: sorted.map(t => t[metric] || 0),
+          borderWidth: 2,
+          tension: 0.3,
           fill: false
         });
       });
-
-      const labels = tableData[0]?.timeseries?.map(t => t.date) || [];
 
       chart = new Chart(canvas, {
         type: "line",
         data: { labels, datasets },
         options: {
           responsive: true,
-          interaction: { mode: "index", intersect: false }
+          maintainAspectRatio: false,     // ⭐ IMPORTANT FIX
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { ticks: { maxRotation: 45, minRotation: 45 } }
+          }
         }
       });
+
+      /* ⭐ FIX Chart.js overriding <canvas> inline size */
+      canvas.removeAttribute("width");
+      canvas.removeAttribute("height");
+      canvas.style.width  = "100%";
+      canvas.style.height = "100%";
     }
 
     /* =========================================================================
-       HELPERS
+        HELPERS
     ========================================================================= */
     function pretty(str) {
       return str
         .replace(/([A-Z])/g, " $1")
-        .replace(/^\w/, c => c.toUpperCase());
+        .replace(/^./, c => c.toUpperCase());
     }
 
     function format(v) {
