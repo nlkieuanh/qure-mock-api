@@ -16,12 +16,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const tableWrapper   = card.querySelector(".table-render");
     const canvas         = card.querySelector("canvas");
 
-    /* ---- Webflow Metric Dropdown ----
-       Webflow produces multiple classes:
-       class="Filter Dropdown Toggle"
-       class="Filter Dropdown List Inner"
-       => Selector must use dot-join: .Filter.Dropdown.Toggle
-    ------------------------------------------------------------------------*/
+    /* ---- Webflow Metric Dropdown Structure ---- */
     const metricDropdown       = card.querySelector(".chart-metric-dd-select");
     const metricToggle         = metricDropdown?.querySelector(".filter-dropdown-toggle");
     const metricList           = metricDropdown?.querySelector(".filter-dropdown-list-inner");
@@ -80,7 +75,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-        BUILD METRIC DROPDOWN (WEBFLOW CUSTOM)
+        BUILD METRIC DROPDOWN (DYNAMIC FROM TABLE COLUMNS)
     ========================================================================= */
     function buildMetricDropdown(cols) {
       if (!metricList) return;
@@ -88,7 +83,7 @@ document.addEventListener("DOMContentLoaded", function () {
       metricList.innerHTML = "";
 
       cols.forEach(col => {
-        if (col === "name" || col === "date") return;
+        if (col === "name" || col === "date" || col === "timeseries") return;
 
         const item = document.createElement("div");
         item.className = "filter-dropdown-item";
@@ -100,26 +95,23 @@ document.addEventListener("DOMContentLoaded", function () {
         item.appendChild(text);
         metricList.appendChild(item);
 
+        /* ---- When metric item clicked ---- */
         item.addEventListener("click", () => {
           currentMetric = col;
 
-          // Update the visible selected label
+          // ONLY update label inside toggle — NOT the toggle itself
           if (metricSelectedLabel) {
             metricSelectedLabel.textContent = pretty(col);
-          }
-
-          // Update the toggle label
-          if (metricToggle) {
-            metricToggle.textContent = pretty(col);
           }
 
           updateChart();
         });
       });
 
-      // Initial selected label
-      if (metricSelectedLabel) metricSelectedLabel.textContent = pretty(currentMetric);
-      if (metricToggle)        metricToggle.textContent        = pretty(currentMetric);
+      // Initialize visible selected label
+      if (metricSelectedLabel) {
+        metricSelectedLabel.textContent = pretty(currentMetric);
+      }
     }
 
     /* =========================================================================
@@ -156,7 +148,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       selectedKeys = new Set(rows.map(r => r.name));
 
-      /* Checkbox toggle */
+      /* Checkbox */
       tableWrapper.querySelectorAll(".row-check").forEach(cb => {
         cb.addEventListener("change", () => {
           const key = cb.dataset.key;
@@ -190,7 +182,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-        CHART RENDER (TIMESERIES MULTI-LINE + FIX CANVAS)
+        CHART RENDER (MULTILINE TIMESERIES)
     ========================================================================= */
     function updateChart() {
       if (!canvas) return;
@@ -230,7 +222,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
 
-      /* ⭐ Remove inline sizes added by Chart.js */
+      // Reset canvas sizing to avoid inline width/height
       canvas.removeAttribute("width");
       canvas.removeAttribute("height");
       canvas.style.width  = "100%";
