@@ -25,14 +25,15 @@ document.addEventListener("DOMContentLoaded", function () {
     const dateSelect     = card.querySelector(".date-select");
 
     let columns      = [];
-    let tableData    = [];
+    let tableData    = [];   // dữ liệu API gốc
+    let tableView    = [];   // dữ liệu để hiển thị bảng (sort trên bản copy)
     let selectedKeys = new Set();
     let currentMetric = defaultMetric;
 
     let chart = null;
 
     if (platformSelect) platformSelect.addEventListener("change", loadData);
-    if (dateSelect)     addEventListener("change", loadData);
+    if (dateSelect)     dateSelect.addEventListener("change", loadData);
 
     loadData();
 
@@ -63,13 +64,15 @@ document.addEventListener("DOMContentLoaded", function () {
       fetch(buildUrl())
         .then(r => r.json())
         .then(json => {
-          columns   = json.columns || [];
-          tableData = json.rows || [];
 
-          selectedKeys = new Set(tableData.map(r => r.name)); // Only once on load!
+          columns    = json.columns || [];
+          tableData  = json.rows || [];
+          tableView  = [...tableData];   // bản copy để hiển thị bảng
+
+          selectedKeys = new Set(tableData.map(r => r.name)); 
 
           buildMetricDropdown(columns);
-          renderTable(columns, tableData);
+          renderTable(columns, tableView);
           updateChart();
         })
         .catch(console.error);
@@ -99,7 +102,6 @@ document.addEventListener("DOMContentLoaded", function () {
         item.addEventListener("click", () => {
           currentMetric = col;
 
-          // ONLY update label inside toggle — not toggle container.
           if (metricSelectedLabel) {
             metricSelectedLabel.textContent = pretty(col);
           }
@@ -140,7 +142,7 @@ document.addEventListener("DOMContentLoaded", function () {
       html += `</tbody></table></div>`;
       tableWrapper.innerHTML = html;
 
-      /* Checkbox */
+      /* Checkbox handler */
       tableWrapper.querySelectorAll(".row-check").forEach(cb => {
         cb.addEventListener("change", () => {
           const key = cb.dataset.key;
@@ -150,7 +152,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
 
-      /* Sorting */
+      /* Sorting handler */
       tableWrapper.querySelectorAll("th.sortable").forEach(th => {
         th.addEventListener("click", () => sortColumn(th.dataset.col));
       });
@@ -164,19 +166,19 @@ document.addEventListener("DOMContentLoaded", function () {
         sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
       }
 
-      tableData.sort((a, b) => {
+      // ❗ Sort CHỈ tác động vào tableView, không chạm tableData
+      tableView.sort((a, b) => {
         const A = a[col] ?? 0;
         const B = b[col] ?? 0;
         return sortState.dir === "asc" ? A - B : B - A;
       });
 
-      // Do NOT reset selectedKeys here!
-      renderTable(columns, tableData);
-      updateChart();
+      renderTable(columns, tableView);
+      updateChart();   
     }
 
     /* =========================================================================
-        CHART RENDER (MULTILINE TIMESERIES)
+        CHART RENDER - MULTILINE TIMESERIES
     ========================================================================= */
     function updateChart() {
       if (!canvas) return;
@@ -184,7 +186,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const metric = currentMetric;
 
-      // FIX #1 — Labels không phụ thuộc tableData[0] (vì sort sẽ thay đổi)
+      // Always get labels from first valid row in tableData (not affected by sorting)
       const firstRowWithTS = tableData.find(r => Array.isArray(r.timeseries));
 
       const labels = firstRowWithTS
@@ -195,11 +197,11 @@ document.addEventListener("DOMContentLoaded", function () {
         const row = tableData.find(r => r.name === name);
         if (!row?.timeseries) return null;
 
-        const sorted = row.timeseries.slice().sort((a, b) => a.date.localeCompare(b.date));
+        const sortedTS = row.timeseries.slice().sort((a, b) => a.date.localeCompare(b.date));
 
         return {
           label: `${row.name} - ${pretty(metric)}`,
-          data: sorted.map(v => v[metric] || 0),
+          data: sortedTS.map(v => v[metric] || 0),
           borderWidth: 2,
           tension: 0.3,
           fill: false
@@ -216,7 +218,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
 
-      // Keep canvas responsive
       canvas.removeAttribute("width");
       canvas.removeAttribute("height");
       canvas.style.width = "100%";
