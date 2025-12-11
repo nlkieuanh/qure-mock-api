@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function () {
   cards.forEach(initCardBlock);
 
   /* =========================================================================
-      INIT ONE CARD BLOCK
+      INIT DYNAMIC UNIVERSAL MODULE FOR ANY CARD BLOCK
   ========================================================================= */
   function initCardBlock(card) {
 
@@ -25,13 +25,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const dateSelect     = card.querySelector(".date-select");
 
     let columns      = [];
-    let tableData    = [];   // dữ liệu API gốc
-    let tableView    = [];   // dữ liệu để hiển thị bảng (sort trên bản copy)
+    let tableData    = [];   // raw API data
+    let tableView    = [];   // used for sorting in UI
     let selectedKeys = new Set();
     let currentMetric = defaultMetric;
 
     let chart = null;
 
+    /* Filters */
     if (platformSelect) platformSelect.addEventListener("change", loadData);
     if (dateSelect)     dateSelect.addEventListener("change", loadData);
 
@@ -67,9 +68,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
           columns    = json.columns || [];
           tableData  = json.rows || [];
-          tableView  = [...tableData];   // bản copy để hiển thị bảng
+          tableView  = [...tableData];  // independent view for sorting
 
-          selectedKeys = new Set(tableData.map(r => r.name)); 
+          // Default: All rows selected
+          selectedKeys = new Set(tableData.map(r => r.name));
 
           buildMetricDropdown(columns);
           renderTable(columns, tableView);
@@ -79,7 +81,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-        BUILD METRIC DROPDOWN (NO ARROW REMOVAL)
+        METRIC DROPDOWN (DYNAMIC HEADER → METRIC LIST)
     ========================================================================= */
     function buildMetricDropdown(cols) {
       if (!metricList) return;
@@ -115,11 +117,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-        TABLE RENDER + SORT + CHECKBOX
+        TABLE RENDER + SORT + SELECT ROWS
     ========================================================================= */
     let sortState = { col: null, dir: null };
 
     function renderTable(cols, rows) {
+
       let html = `
         <div class="adv-channel-table-wrapper">
           <table class="adv-channel-table">
@@ -142,7 +145,7 @@ document.addEventListener("DOMContentLoaded", function () {
       html += `</tbody></table></div>`;
       tableWrapper.innerHTML = html;
 
-      /* Checkbox handler */
+      /* Checkbox handling */
       tableWrapper.querySelectorAll(".row-check").forEach(cb => {
         cb.addEventListener("change", () => {
           const key = cb.dataset.key;
@@ -152,7 +155,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
 
-      /* Sorting handler */
+      /* Column sorting */
       tableWrapper.querySelectorAll("th.sortable").forEach(th => {
         th.addEventListener("click", () => sortColumn(th.dataset.col));
       });
@@ -166,7 +169,7 @@ document.addEventListener("DOMContentLoaded", function () {
         sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
       }
 
-      // ❗ Sort CHỈ tác động vào tableView, không chạm tableData
+      // sort independent view
       tableView.sort((a, b) => {
         const A = a[col] ?? 0;
         const B = b[col] ?? 0;
@@ -174,11 +177,11 @@ document.addEventListener("DOMContentLoaded", function () {
       });
 
       renderTable(columns, tableView);
-      updateChart();   
+      updateChart();
     }
 
     /* =========================================================================
-        CHART RENDER - MULTILINE TIMESERIES
+        CHART — MULTILINE TIMESERIES WITH UNION X-AXIS
     ========================================================================= */
     function updateChart() {
       if (!canvas) return;
@@ -186,28 +189,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const metric = currentMetric;
 
-      // Always get labels from first valid row in tableData (not affected by sorting)
-      const firstRowWithTS = tableData.find(r => Array.isArray(r.timeseries));
+      /* ------------------------------------------------------------
+         UNION OF ALL DATES (CORRECT TIMESERIES WITH DIFFERENT AXES)
+      ------------------------------------------------------------ */
+      const dateSet = new Set();
 
-      const labels = firstRowWithTS
-        ? firstRowWithTS.timeseries.map(ts => ts.date)
-        : [];
+      tableData.forEach(row => {
+        if (selectedKeys.has(row.name) && Array.isArray(row.timeseries)) {
+          row.timeseries.forEach(ts => dateSet.add(ts.date));
+        }
+      });
 
+      const labels = [...dateSet].sort((a, b) => a.localeCompare(b));
+
+      /* ------------------------------------------------------------
+         BUILD DATASETS FOR EACH SELECTED ROW
+      ------------------------------------------------------------ */
       const datasets = [...selectedKeys].map(name => {
+
         const row = tableData.find(r => r.name === name);
         if (!row?.timeseries) return null;
 
-        const sortedTS = row.timeseries.slice().sort((a, b) => a.date.localeCompare(b.date));
+        const map = {};
+        row.timeseries.forEach(ts => map[ts.date] = ts[metric] ?? 0);
+
+        const series = labels.map(date => map[date] ?? 0);
 
         return {
-          label: `${row.name} - ${pretty(metric)}`,
-          data: sortedTS.map(v => v[metric] || 0),
+          label: `${name} - ${pretty(metric)}`,
+          data: series,
           borderWidth: 2,
           tension: 0.3,
           fill: false
         };
       }).filter(Boolean);
 
+      /* ------------------------------------------------------------
+         CHART INSTANCE
+      ------------------------------------------------------------ */
       chart = new Chart(canvas, {
         type: "line",
         data: { labels, datasets },
