@@ -17,9 +17,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const canvas         = card.querySelector("canvas");
 
     /* ---- Webflow Metric Dropdown ---- */
-    const metricDropdown = card.querySelector(".chart-metric-dd-select");
-    const metricToggle   = metricDropdown?.querySelector(".Filter Dropdown Toggle");
-    const metricList     = metricDropdown?.querySelector(".Filter Dropdown List Inner");
+    const metricDropdown       = card.querySelector(".chart-metric-dd-select");
+    const metricToggle         = metricDropdown?.querySelector(".metric-dd-toggle");
+    const metricList           = metricDropdown?.querySelector(".metric-dd-list-inner");
+    const metricSelectedLabel  = metricDropdown?.querySelector(".chart-metric-dd-selected");
 
     const platformSelect = card.querySelector(".platform-select");
     const dateSelect     = card.querySelector(".date-select");
@@ -96,12 +97,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
         item.addEventListener("click", () => {
           currentMetric = col;
-          metricToggle.textContent = pretty(col);
+
+          // Update label in UI
+          if (metricSelectedLabel) {
+            metricSelectedLabel.textContent = pretty(col);
+          }
+          if (metricToggle) {
+            metricToggle.textContent = pretty(col);
+          }
+
           updateChart();
         });
       });
 
-      metricToggle.textContent = pretty(currentMetric);
+      // Set default label
+      if (metricSelectedLabel) metricSelectedLabel.textContent = pretty(currentMetric);
+      if (metricToggle)        metricToggle.textContent        = pretty(currentMetric);
     }
 
     /* =========================================================================
@@ -137,7 +148,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
       tableWrapper.innerHTML = html;
 
-      /* Pre-select all rows */
       selectedKeys = new Set(rows.map(r => r.name));
 
       /* Checkbox toggle */
@@ -156,7 +166,6 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
-    /* ---- Sorting handler ---- */
     function sortColumn(col) {
       if (sortState.col !== col) {
         sortState = { col, dir: "asc" };
@@ -175,7 +184,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-        CHART RENDER (FIXED CANVAS)
+        CHART RENDER (TIMESERIES MULTI-LINE + FIX CANVAS)
     ========================================================================= */
     function updateChart() {
       if (!canvas) return;
@@ -207,7 +216,7 @@ document.addEventListener("DOMContentLoaded", function () {
         data: { labels, datasets },
         options: {
           responsive: true,
-          maintainAspectRatio: false,     // ⭐ IMPORTANT FIX
+          maintainAspectRatio: false,     // ⭐ FIX CANVAS SIZE
           interaction: { mode: "index", intersect: false },
           scales: {
             x: { ticks: { maxRotation: 45, minRotation: 45 } }
@@ -215,7 +224,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
 
-      /* ⭐ FIX Chart.js overriding <canvas> inline size */
+      // ⭐ Remove inline sizes added by Chart.js
       canvas.removeAttribute("width");
       canvas.removeAttribute("height");
       canvas.style.width  = "100%";
