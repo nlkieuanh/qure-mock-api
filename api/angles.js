@@ -7,89 +7,137 @@ export default function handler(req, res) {
     const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
     const url = new URL(req.url, "http://localhost");
-    const product = url.searchParams.get("product");
-    const usecase = url.searchParams.get("usecase");
 
-    // CORS
+    const product  = url.searchParams.get("product");
+    const usecase  = url.searchParams.get("usecase");
+    const platform = url.searchParams.get("platform");
+    const start    = url.searchParams.get("start");
+    const end      = url.searchParams.get("end");
+
+    /* ---------------- CORS ---------------- */
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
 
-    if (req.method === "OPTIONS") return res.status(200).end();
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
 
-    const map = {};
+    /* ---------------- FILTER ADS ---------------- */
+    let filtered = ads.slice();
 
-    ads.forEach(ad => {
-      if (product && ad.f_products !== product) return;
+    if (product) {
+      filtered = filtered.filter(ad => ad.f_products === product);
+    }
 
-      let uc = [];
-      if (Array.isArray(ad.f_use_case)) uc = ad.f_use_case;
-      else if (typeof ad.f_use_case === "string") uc = [ad.f_use_case];
+    if (usecase) {
+      filtered = filtered.filter(ad => {
+        let uc = [];
+        if (Array.isArray(ad.f_use_case)) uc = ad.f_use_case;
+        else if (typeof ad.f_use_case === "string") uc = [ad.f_use_case];
+        return uc.includes(usecase);
+      });
+    }
 
-      if (usecase && !uc.includes(usecase)) return;
+    if (platform) {
+      filtered = filtered.filter(ad => ad.platform === platform);
+    }
 
+    if (start && end) {
+      const s = new Date(start);
+      const e = new Date(end);
+      filtered = filtered.filter(ad => {
+        const d = new Date(ad.date_start || ad.date || 0);
+        return d >= s && d <= e;
+      });
+    }
+
+    /* ---------------- GROUP BY ANGLE ---------------- */
+    const groups = {};
+
+    filtered.forEach(ad => {
       let angles = [];
-      if (Array.isArray(ad.f_angles)) angles = ad.f_angles;
-      else if (typeof ad.f_angles === "string") angles = [ad.f_angles];
-      else angles = ["Unknown"];
 
-      const date = ad.date || ad.created_at || ad.timestamp || null;
+      if (Array.isArray(ad.f_angles) && ad.f_angles.length > 0) {
+        angles = ad.f_angles;
+      } else if (typeof ad.f_angles === "string" && ad.f_angles.trim() !== "") {
+        angles = [ad.f_angles.trim()];
+      } else {
+        angles = ["Unknown"];
+      }
 
-      angles.forEach(name => {
-        if (!map[name]) {
-          map[name] = {
-            name,
+      angles.forEach(angle => {
+        if (!groups[angle]) {
+          groups[angle] = {
+            name: angle,
             adsCount: 0,
             spend: 0,
             revenue: 0,
-            roas: 0,
-            ctr: 0,
+            impressions: 0,
+            clicks: 0,
             timeseries: {}
           };
         }
 
-        map[name].adsCount += 1;
-        map[name].spend += Number(ad.spend) || 0;
-        map[name].revenue += Number(ad.revenue) || 0;
+        const g = groups[angle];
+        g.adsCount += 1;
+        g.spend += Number(ad.spend) || 0;
+        g.revenue += Number(ad.revenue) || 0;
+        g.impressions += Number(ad.impressions) || 0;
+        g.clicks += Number(ad.clicks) || 0;
 
-        // Timeseries (group by date)
+        /* ---- Timeseries ---- */
+        const date = ad.date_start || ad.date || null;
         if (date) {
-          if (!map[name].timeseries[date]) {
-            map[name].timeseries[date] = {
+          if (!g.timeseries[date]) {
+            g.timeseries[date] = {
               date,
               adsCount: 0,
               spend: 0,
-              revenue: 0
+              revenue: 0,
+              impressions: 0,
+              clicks: 0
             };
           }
 
-          map[name].timeseries[date].adsCount += 1;
-          map[name].timeseries[date].spend += Number(ad.spend) || 0;
-          map[name].timeseries[date].revenue += Number(ad.revenue) || 0;
+          g.timeseries[date].adsCount += 1;
+          g.timeseries[date].spend += Number(ad.spend) || 0;
+          g.timeseries[date].revenue += Number(ad.revenue) || 0;
+          g.timeseries[date].impressions += Number(ad.impressions) || 0;
+          g.timeseries[date].clicks += Number(ad.clicks) || 0;
         }
       });
     });
 
-    const rows = Object.values(map).map(r => {
-      const tsArray = Object.values(r.timeseries).sort((a, b) =>
+    /* ---------------- FORMAT OUTPUT ---------------- */
+    const rows = Object.values(groups).map(g => {
+      const ts = Object.values(g.timeseries).sort((a, b) =>
         a.date.localeCompare(b.date)
       );
 
-      const roas = r.spend > 0 ? r.revenue / r.spend : 0;
-
       return {
-        name: r.name,
-        adsCount: r.adsCount,
-        spend: r.spend,
-        revenue: r.revenue,
-        roas,
-        ctr: 0, 
-        timeseries: tsArray
+        name: g.name,
+        adsCount: g.adsCount,
+        spend: g.spend,
+        revenue: g.revenue,
+        revPerAd: g.adsCount > 0 ? g.revenue / g.adsCount : 0,
+        roas: g.spend > 0 ? g.revenue / g.spend : 0,
+        ctr: g.impressions > 0 ? g.clicks / g.impressions : 0,
+        timeseries: ts
       };
     });
 
+    /* ---------------- RETURN UNIVERSAL FORMAT ---------------- */
     return res.status(200).json({
-      columns: ["name", "adsCount", "spend", "revenue", "roas", "ctr"],
+      columns: [
+        "name",
+        "adsCount",
+        "spend",
+        "revenue",
+        "revPerAd",
+        "roas",
+        "ctr"
+      ],
       rows
     });
 
