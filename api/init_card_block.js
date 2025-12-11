@@ -1,41 +1,41 @@
 document.addEventListener("DOMContentLoaded", function () {
-
   const cards = document.querySelectorAll(".card-block-wrap[data-api]");
   if (!cards.length) return;
 
-  cards.forEach(card => initCardBlock(card));
+  cards.forEach(function (card) {
+    initCardBlock(card);
+  });
 
   /* ============================================================
      INIT ONE CARD BLOCK
      ============================================================ */
   function initCardBlock(card) {
-
-    const apiUrl       = card.dataset.api;
+    const apiUrl = card.dataset.api;
     const defaultMetric = card.dataset.defaultMetric || "adsCount";
 
     const tableWrapper = card.querySelector(".table-render");
-    const canvas       = card.querySelector("canvas");
+    const canvas = card.querySelector("canvas");
     const metricSelect = card.querySelector(".metric-select");
     const platformSelect = card.querySelector(".platform-select");
-    const dateSelect     = card.querySelector(".date-select");
+    const dateSelect = card.querySelector(".date-select");
 
     let tableData = [];
     let chart = null;
     let selectedKeys = new Set();
 
-    metricSelect?.addEventListener("change", updateChart);
-    platformSelect?.addEventListener("change", loadData);
-    dateSelect?.addEventListener("change", loadData);
+    if (metricSelect) metricSelect.addEventListener("change", updateChart);
+    if (platformSelect) platformSelect.addEventListener("change", loadData);
+    if (dateSelect) dateSelect.addEventListener("change", loadData);
 
     loadData();
 
     /* ------------------------------------------------------------
-       API URL Builder (platform + date range)
+       API URL Builder
        ------------------------------------------------------------ */
     function buildUrl() {
       const params = [];
-      const platform = platformSelect?.value;
-      const range = dateSelect?.value;
+      const platform = platformSelect ? platformSelect.value : "";
+      const range = dateSelect ? dateSelect.value : "";
 
       if (platform) params.push("platform=" + encodeURIComponent(platform));
 
@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const end = new Date();
         const start = new Date();
         start.setDate(end.getDate() - Number(range));
+
         params.push("start=" + start.toISOString());
         params.push("end=" + end.toISOString());
       }
@@ -55,11 +56,16 @@ document.addEventListener("DOMContentLoaded", function () {
        ------------------------------------------------------------ */
     function loadData() {
       fetch(buildUrl())
-        .then(r => r.json())
-        .then(json => {
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (json) {
           tableData = json.rows || [];
           renderTable(json);
           updateChart();
+        })
+        .catch(function (err) {
+          console.error("Error loading data:", err);
         });
     }
 
@@ -67,23 +73,26 @@ document.addEventListener("DOMContentLoaded", function () {
        UNIVERSAL TABLE RENDER
        ------------------------------------------------------------ */
     function renderTable(data) {
-      const { columns, rows } = data;
+      const columns = data.columns || [];
+      const rows = data.rows || [];
 
       let html = '<table><thead><tr>';
-      html += "<th></th>"; // checkbox
-      columns.forEach(c => html += \`<th data-col="\${c}">\${pretty(c)}</th>\`);
+      html += '<th></th>';
+
+      columns.forEach(function (col) {
+        html += '<th data-col="' + col + '">' + pretty(col) + "</th>";
+      });
+
       html += "</tr></thead><tbody>";
 
-      rows.forEach(r => {
-        const key = r[columns[0]];
+      rows.forEach(function (row) {
+        const key = row[columns[0]];
 
-        html += \`
-          <tr data-key="\${key}">
-            <td><input type="checkbox" class="row-check" data-key="\${key}"></td>
-        \`;
+        html += '<tr data-key="' + key + '">';
+        html += '<td><input type="checkbox" class="row-check" data-key="' + key + '"></td>';
 
-        columns.forEach(c => {
-          html += \`<td>\${format(r[c])}</td>\`;
+        columns.forEach(function (col) {
+          html += "<td>" + format(row[col]) + "</td>";
         });
 
         html += "</tr>";
@@ -92,9 +101,8 @@ document.addEventListener("DOMContentLoaded", function () {
       html += "</tbody></table>";
       tableWrapper.innerHTML = html;
 
-      // Checkbox events
-      tableWrapper.querySelectorAll(".row-check").forEach(cb => {
-        cb.addEventListener("change", () => {
+      tableWrapper.querySelectorAll(".row-check").forEach(function (cb) {
+        cb.addEventListener("change", function () {
           const key = cb.dataset.key;
           if (cb.checked) selectedKeys.add(key);
           else selectedKeys.delete(key);
@@ -102,9 +110,10 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
 
-      // Sorting events
-      tableWrapper.querySelectorAll("th[data-col]").forEach(th => {
-        th.addEventListener("click", () => onSort(th.dataset.col));
+      tableWrapper.querySelectorAll("th[data-col]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          onSort(th.dataset.col);
+        });
       });
     }
 
@@ -115,45 +124,52 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function onSort(col) {
       if (sortState.col !== col) {
-        sortState = { col, dir: "asc" };
+        sortState = { col: col, dir: "asc" };
       } else {
         sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
       }
 
-      tableData.sort((a, b) => {
-        const A = a[col] ?? 0;
-        const B = b[col] ?? 0;
+      tableData.sort(function (a, b) {
+        const A = a[col] || 0;
+        const B = b[col] || 0;
         return sortState.dir === "asc" ? A - B : B - A;
       });
 
-      renderTable({ columns: Object.keys(tableData[0] || {}), rows: tableData });
+      renderTable({
+        columns: Object.keys(tableData[0] || {}),
+        rows: tableData
+      });
     }
 
     /* ------------------------------------------------------------
-       CHART LOGIC (Universal)
+       CHART LOGIC
        ------------------------------------------------------------ */
     function updateChart() {
-      const metric = metricSelect?.value || defaultMetric;
+      const metric = metricSelect ? metricSelect.value : defaultMetric;
 
       if (chart) chart.destroy();
 
       const labels = selectedKeys.size
-        ? [...selectedKeys]
-        : tableData.map(r => r.name);
+        ? Array.from(selectedKeys)
+        : tableData.map(function (r) {
+            return r.name;
+          });
 
-      const data = labels.map(l => {
-        const row = tableData.find(r => r.name === l);
-        return row?.[metric] ?? 0;
+      const data = labels.map(function (label) {
+        const row = tableData.find(function (r) {
+          return r.name === label;
+        });
+        return row && row[metric] ? row[metric] : 0;
       });
 
       chart = new Chart(canvas, {
         type: "line",
         data: {
-          labels,
+          labels: labels,
           datasets: [
             {
               label: pretty(metric),
-              data,
+              data: data,
               fill: true
             }
           ]
@@ -165,11 +181,14 @@ document.addEventListener("DOMContentLoaded", function () {
        HELPERS
        ------------------------------------------------------------ */
     function pretty(str) {
-      return str.replace(/([A-Z])/g, " $1").replace(/^\w/, c => c.toUpperCase());
+      return str.replace(/([A-Z])/g, " $1").replace(/^\w/, function (c) {
+        return c.toUpperCase();
+      });
     }
+
     function format(v) {
       if (typeof v === "number") return v.toLocaleString();
-      return v ?? "";
+      return v || "";
     }
   }
 });
