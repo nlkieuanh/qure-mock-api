@@ -16,9 +16,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const tableWrapper   = card.querySelector(".table-render");
     const canvas         = card.querySelector("canvas");
 
-    /* ---- Webflow Metric Dropdown Structure ---- */
+    /* ---- Webflow Metric Dropdown ---- */
     const metricDropdown       = card.querySelector(".chart-metric-dd-select");
-    const metricToggle         = metricDropdown?.querySelector(".filter-dropdown-toggle");
     const metricList           = metricDropdown?.querySelector(".filter-dropdown-list-inner");
     const metricSelectedLabel  = metricDropdown?.querySelector(".chart-metric-dd-selected");
 
@@ -33,7 +32,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let chart = null;
 
     if (platformSelect) platformSelect.addEventListener("change", loadData);
-    if (dateSelect)     dateSelect.addEventListener("change", loadData);
+    if (dateSelect)     addEventListener("change", loadData);
 
     loadData();
 
@@ -67,6 +66,8 @@ document.addEventListener("DOMContentLoaded", function () {
           columns   = json.columns || [];
           tableData = json.rows || [];
 
+          selectedKeys = new Set(tableData.map(r => r.name)); // Only once on load!
+
           buildMetricDropdown(columns);
           renderTable(columns, tableData);
           updateChart();
@@ -75,7 +76,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /* =========================================================================
-        BUILD METRIC DROPDOWN (DYNAMIC FROM TABLE COLUMNS)
+        BUILD METRIC DROPDOWN (NO ARROW REMOVAL)
     ========================================================================= */
     function buildMetricDropdown(cols) {
       if (!metricList) return;
@@ -95,11 +96,10 @@ document.addEventListener("DOMContentLoaded", function () {
         item.appendChild(text);
         metricList.appendChild(item);
 
-        /* ---- When metric item clicked ---- */
         item.addEventListener("click", () => {
           currentMetric = col;
 
-          // ONLY update label inside toggle — NOT the toggle itself
+          // ONLY update label inside toggle — not toggle container.
           if (metricSelectedLabel) {
             metricSelectedLabel.textContent = pretty(col);
           }
@@ -108,10 +108,8 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
 
-      // Initialize visible selected label
-      if (metricSelectedLabel) {
+      if (metricSelectedLabel)
         metricSelectedLabel.textContent = pretty(currentMetric);
-      }
     }
 
     /* =========================================================================
@@ -120,33 +118,27 @@ document.addEventListener("DOMContentLoaded", function () {
     let sortState = { col: null, dir: null };
 
     function renderTable(cols, rows) {
-      let html = '<div class="adv-channel-table-wrapper">';
-      html += '<table class="adv-channel-table">';
-      html += '<thead><tr>';
-      html += '<th></th>';
-
-      cols.forEach(col => {
-        html += `<th data-col="${col}" class="sortable">${pretty(col)}</th>`;
-      });
-
-      html += '</tr></thead><tbody>';
+      let html = `
+        <div class="adv-channel-table-wrapper">
+          <table class="adv-channel-table">
+            <thead><tr>
+              <th></th>
+              ${cols.map(c => `<th data-col="${c}" class="sortable">${pretty(c)}</th>`).join("")}
+            </tr></thead>
+            <tbody>
+      `;
 
       rows.forEach(row => {
-        html += `<tr data-key="${row.name}">`;
-        html += `<td><input type="checkbox" class="row-check" data-key="${row.name}" checked></td>`;
-
-        cols.forEach(col => {
-          html += `<td>${format(row[col])}</td>`;
-        });
-
-        html += `</tr>`;
+        html += `
+          <tr data-key="${row.name}">
+            <td><input type="checkbox" class="row-check" data-key="${row.name}" ${selectedKeys.has(row.name) ? "checked" : ""}></td>
+            ${cols.map(c => `<td>${format(row[c])}</td>`).join("")}
+          </tr>
+        `;
       });
 
-      html += '</tbody></table></div>';
-
+      html += `</tbody></table></div>`;
       tableWrapper.innerHTML = html;
-
-      selectedKeys = new Set(rows.map(r => r.name));
 
       /* Checkbox */
       tableWrapper.querySelectorAll(".row-check").forEach(cb => {
@@ -165,6 +157,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function sortColumn(col) {
+
       if (sortState.col !== col) {
         sortState = { col, dir: "asc" };
       } else {
@@ -177,6 +170,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return sortState.dir === "asc" ? A - B : B - A;
       });
 
+      // Do NOT reset selectedKeys here!
       renderTable(columns, tableData);
       updateChart();
     }
@@ -190,24 +184,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const metric = currentMetric;
 
-      const labels = tableData[0]?.timeseries?.map(ts => ts.date) || [];
+      // FIX #1 — Labels không phụ thuộc tableData[0] (vì sort sẽ thay đổi)
+      const firstRowWithTS = tableData.find(r => Array.isArray(r.timeseries));
 
-      const datasets = [];
+      const labels = firstRowWithTS
+        ? firstRowWithTS.timeseries.map(ts => ts.date)
+        : [];
 
-      [...selectedKeys].forEach(name => {
+      const datasets = [...selectedKeys].map(name => {
         const row = tableData.find(r => r.name === name);
-        if (!row?.timeseries) return;
+        if (!row?.timeseries) return null;
 
-        const sorted = row.timeseries.sort((a, b) => a.date.localeCompare(b.date));
+        const sorted = row.timeseries.slice().sort((a, b) => a.date.localeCompare(b.date));
 
-        datasets.push({
+        return {
           label: `${row.name} - ${pretty(metric)}`,
-          data: sorted.map(t => t[metric] || 0),
+          data: sorted.map(v => v[metric] || 0),
           borderWidth: 2,
           tension: 0.3,
           fill: false
-        });
-      });
+        };
+      }).filter(Boolean);
 
       chart = new Chart(canvas, {
         type: "line",
@@ -215,17 +212,14 @@ document.addEventListener("DOMContentLoaded", function () {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          interaction: { mode: "index", intersect: false },
-          scales: {
-            x: { ticks: { maxRotation: 45, minRotation: 45 } }
-          }
+          interaction: { mode: "index", intersect: false }
         }
       });
 
-      // Reset canvas sizing to avoid inline width/height
+      // Keep canvas responsive
       canvas.removeAttribute("width");
       canvas.removeAttribute("height");
-      canvas.style.width  = "100%";
+      canvas.style.width = "100%";
       canvas.style.height = "100%";
     }
 
