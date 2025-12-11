@@ -1,69 +1,68 @@
-import { loadAds, extractDate, aggregateMetrics, finalizeRow } from "./_utils";
+import fs from "fs";
+import path from "path";
 
 export default function handler(req, res) {
   try {
-    const ads = loadAds();
-    const bucket = {};
+    const filePath = path.join(process.cwd(), "data", "ads.json");
+    const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+    const url = new URL(req.url, "http://localhost");
+    const product = url.searchParams.get("product");
+
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+
+    // -------------------------------------------------------
+    // GROUPING LOGIC (reused for full mode & filtered mode)
+    // -------------------------------------------------------
+    const map = {};
 
     ads.forEach(ad => {
-      let keys = [];
-      if (Array.isArray(ad.f_use_case)) keys = ad.f_use_case;
-      else if (typeof ad.f_use_case === "string") keys = [ad.f_use_case];
-      else keys = ["Unknown"];
+      if (product && ad.f_products !== product) return;
 
-      const date = extractDate(ad);
-      const { spend, revenue, ctr } = aggregateMetrics(ad);
+      let useCases = [];
 
-      keys.forEach(key => {
-        if (!bucket[key]) {
-          bucket[key] = {
-            name: key,
+      if (Array.isArray(ad.f_use_case) && ad.f_use_case.length > 0) {
+        useCases = ad.f_use_case;
+      } else if (typeof ad.f_use_case === "string" && ad.f_use_case.trim() !== "") {
+        useCases = [ad.f_use_case.trim()];
+      } else {
+        useCases = ["Unknown"];
+      }
+
+      useCases.forEach(name => {
+        if (!map[name]) {
+          map[name] = {
+            name,
             adsCount: 0,
             spend: 0,
-            revenue: 0,
-            ctrTotal: 0,
-            ctrCount: 0,
-            timeseries: {}
+            impressions: 0,
           };
         }
 
-        const row = bucket[key];
-        row.adsCount += 1;
-        row.spend += spend;
-        row.revenue += revenue;
-        row.ctrTotal += ctr;
-        row.ctrCount += ctr > 0 ? 1 : 0;
-
-        if (date) {
-          if (!row.timeseries[date]) {
-            row.timeseries[date] = {
-              date,
-              adsCount: 0,
-              spend: 0,
-              revenue: 0,
-              ctrTotal: 0,
-              ctrCount: 0
-            };
-          }
-          const ts = row.timeseries[date];
-          ts.adsCount++;
-          ts.spend += spend;
-          ts.revenue += revenue;
-          ts.ctrTotal += ctr;
-          ts.ctrCount += ctr > 0 ? 1 : 0;
-        }
+        map[name].adsCount += 1;
+        map[name].spend += Number(ad.spend) || 0;
+        map[name].impressions += Number(ad.impressions) || 0;
       });
     });
 
-    const rows = Object.values(bucket).map(finalizeRow);
+    const rows = Object.values(map);
 
+    // -------------------------------------------------------
+    // UNIVERSAL FORMAT (same schema as products.js)
+    // -------------------------------------------------------
     return res.status(200).json({
-      columns: ["name", "adsCount", "spend", "revenue", "revPerAd", "roas", "ctr"],
+      columns: ["name", "adsCount", "spend", "impressions"],
       rows
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("API ERROR /api/usecases:", err);
     return res.status(500).json({ error: err.message });
   }
 }

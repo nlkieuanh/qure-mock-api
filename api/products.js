@@ -1,63 +1,55 @@
-import { loadAds, extractDate, aggregateMetrics, finalizeRow } from "./_utils";
+import fs from "fs";
+import path from "path";
 
 export default function handler(req, res) {
   try {
-    const ads = loadAds();
-    const bucket = {};
+    const filePath = path.join(process.cwd(), "data", "ads.json");
+    const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+
+    // -------------------------------------------
+    // GROUP BY PRODUCT
+    // -------------------------------------------
+    const map = {};
 
     ads.forEach(ad => {
-      const key = ad.f_products || "Unknown";
-      const date = extractDate(ad);
-      const { spend, revenue, ctr } = aggregateMetrics(ad);
+      const product = ad.f_products || "Unknown";
 
-      if (!bucket[key]) {
-        bucket[key] = {
-          name: key,
+      if (!map[product]) {
+        map[product] = {
+          name: product,
           adsCount: 0,
           spend: 0,
-          revenue: 0,
-          ctrTotal: 0,
-          ctrCount: 0,
-          timeseries: {}
+          impressions: 0
         };
       }
 
-      const row = bucket[key];
-      row.adsCount += 1;
-      row.spend += spend;
-      row.revenue += revenue;
-      row.ctrTotal += ctr;
-      row.ctrCount += ctr > 0 ? 1 : 0;
-
-      if (date) {
-        if (!row.timeseries[date]) {
-          row.timeseries[date] = {
-            date,
-            adsCount: 0,
-            spend: 0,
-            revenue: 0,
-            ctrTotal: 0,
-            ctrCount: 0
-          };
-        }
-        const ts = row.timeseries[date];
-        ts.adsCount++;
-        ts.spend += spend;
-        ts.revenue += revenue;
-        ts.ctrTotal += ctr;
-        ts.ctrCount += ctr > 0 ? 1 : 0;
-      }
+      map[product].adsCount += 1;
+      map[product].spend += Number(ad.spend) || 0;
+      map[product].impressions += Number(ad.impressions) || 0;
     });
 
-    const rows = Object.values(bucket).map(finalizeRow);
+    const rows = Object.values(map);
 
-    return res.status(200).json({
-      columns: ["name", "adsCount", "spend", "revenue", "revPerAd", "roas", "ctr"],
-      rows
-    });
+    // -------------------------------------------
+    // UNIVERSAL FORMAT FOR DRILLDOWN TABLE UI
+    // -------------------------------------------
+    const response = {
+      columns: ["name", "adsCount", "spend", "impressions"],
+      rows: rows
+    };
+
+    return res.status(200).json(response);
 
   } catch (err) {
-    console.error(err);
+    console.error("API ERROR /api/products:", err);
     return res.status(500).json({ error: err.message });
   }
 }
