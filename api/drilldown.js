@@ -1,290 +1,226 @@
 export default function handler(req, res) {
   const code = `
-    document.addEventListener("DOMContentLoaded", function () {
+/* ============================================================
+   UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
+   Cleanest version — no legacy render code
+   Supports: dynamic table, sorting, drilldown levels
+   ============================================================ */
 
-      const card = document.querySelector(".card-block-wrap.product-combination-card");
-      if (!card) return;
+document.addEventListener("DOMContentLoaded", function () {
 
-      const wrapper = card.querySelector(".adv-channel-table-wrapper");
-      const chipContainer = card.querySelector(".dd-chips-container");
+  const card = document.querySelector(".card-block-wrap.product-combination-card");
+  if (!card) return;
 
-      const API_PRODUCTS  = "https://qure-mock-api.vercel.app/api/products";
-      const API_USECASES  = "https://qure-mock-api.vercel.app/api/usecases";
-      const API_ANGLES    = "https://qure-mock-api.vercel.app/api/angles";
+  const wrapper = card.querySelector(".adv-channel-table-wrapper");
+  const chipContainer = card.querySelector(".dd-chips-container");
 
-      // ======================================================
-      // STATE
-      // ======================================================
-      window.__ddState = {
-        level: "product",
-        product: null,
-        usecase: null,
-        filters: [] // array of {type, value}
-      };
+  const API_BASE = "https://qure-mock-api.vercel.app/api";
 
-      // ======================================================
-      // TAB UI
-      // ======================================================
-      function updateTabs() {
-        const tabs = card.querySelectorAll(".drilldown-tab-button");
-        tabs.forEach(btn => {
-          btn.classList.toggle("is-current", btn.dataset.tab === window.__ddState.level);
+  /* ============================================================
+     UNIVERSAL TABLE MODULE
+     ============================================================ */
+  class UniversalTable {
+    constructor(root, onRowClick) {
+      this.root = root;
+      this.onRowClick = onRowClick;
+      this.data = { columns: [], rows: [] };
+      this.sort = { key: null, dir: null };
+    }
+
+    setData(data) {
+      this.data = data ?? { columns: [], rows: [] };
+      this.render();
+    }
+
+    render() {
+      const { columns, rows } = this.data;
+
+      let html = '<table class="adv-channel-table"><thead><tr>';
+      columns.forEach(col => {
+        html += \`<th data-col="\${col}">\${this.pretty(col)}</th>\`;
+      });
+      html += '</tr></thead><tbody>';
+
+      rows.forEach(row => {
+        html += \`<tr class="dd-row" data-value="\${row[columns[0]]}">\`;
+        columns.forEach(col => {
+          html += \`<td>\${this.format(row[col])}</td>\`;
         });
-      }
+        html += '</tr>';
+      });
 
-      function attachTabHandlers() {
-        const tabs = card.querySelectorAll(".drilldown-tab-button");
+      html += '</tbody></table>';
+      this.root.innerHTML = html;
 
-        tabs.forEach(btn => {
-          btn.addEventListener("click", () => {
-            const level = btn.dataset.tab;
-            if (!level) return;
+      this.attachSortEvents();
+      this.attachRowEvents();
+    }
 
-            // RESET ALL FILTERS + STATE WHEN USER SWITCH TAB
-            window.__ddState.level = level;
-            window.__ddState.product = null;
-            window.__ddState.usecase = null;
-            window.__ddState.filters = [];
-
-            renderChips();
-            updateTabs();
-
-            if (level === "product") loadProducts();
-            if (level === "usecase") loadAllUseCases();
-            if (level === "angle")   loadAllAngles();
-          });
+    attachSortEvents() {
+      const ths = this.root.querySelectorAll("th");
+      ths.forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.col;
+          this.updateSort(key);
+          this.sortRows();
+          this.render();
         });
+      });
+    }
+
+    updateSort(key) {
+      if (this.sort.key !== key) {
+        this.sort = { key, dir: "asc" };
+      } else {
+        this.sort.dir = this.sort.dir === "asc" ? "desc" : "asc";
       }
+    }
 
-      // ======================================================
-      // CHIP UI
-      // ======================================================
-      function renderChips() {
-        chipContainer.innerHTML = "";
+    sortRows() {
+      const { key, dir } = this.sort;
+      if (!key) return;
 
-        window.__ddState.filters.forEach((f, index) => {
-          const chip = document.createElement("div");
-          chip.className = "dd-chip";
+      this.data.rows.sort((a, b) => {
+        const A = a[key] ?? 0;
+        const B = b[key] ?? 0;
+        return dir === "asc" ? A - B : B - A;
+      });
+    }
 
-          chip.innerHTML = \`
-            <span class="dd-chip-label">\${f.type}: \${f.value}</span>
-            <div class="dd-chip-remove">✕</div>
-          \`;
-
-          chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
-            // Remove chip
-            window.__ddState.filters.splice(index, 1);
-
-            // Reset drilldown state from filters
-            window.__ddState.product = null;
-            window.__ddState.usecase = null;
-
-            window.__ddState.filters.forEach(ch => {
-              if (ch.type === "product")  window.__ddState.product = ch.value;
-              if (ch.type === "usecase")  window.__ddState.usecase = ch.value;
-            });
-
-            // RELOAD DATA BASED ON CURRENT TAB
-            if (window.__ddState.level === "product") {
-              loadProducts();
-            }
-
-            if (window.__ddState.level === "usecase") {
-              if (window.__ddState.product) loadUseCasesFiltered(window.__ddState.product);
-              else loadAllUseCases();
-            }
-
-            if (window.__ddState.level === "angle") {
-              // NEW OR LOGIC
-              loadAnglesOR(
-                window.__ddState.product,
-                window.__ddState.usecase
-              );
-            }
-
-            renderChips();
-          });
-
-          chipContainer.appendChild(chip);
+    attachRowEvents() {
+      if (!this.onRowClick) return;
+      const rows = this.root.querySelectorAll(".dd-row");
+      rows.forEach(row => {
+        row.addEventListener("click", () => {
+          this.onRowClick(row.dataset.value);
         });
-      }
+      });
+    }
 
-      // ======================================================
-      // APPLY CHIP FILTER ONLY IN FULL MODE
-      // ======================================================
-      function applyChipFilter(items) {
-        if (window.__ddState.product || window.__ddState.usecase) return items;
-        if (window.__ddState.filters.length === 0) return items;
+    pretty(key) {
+      return key.replace(/([A-Z])/g, " $1").replace(/^\w/, c => c.toUpperCase());
+    }
 
-        const f = window.__ddState.filters[0];
-        return items.filter(i => i.name === f.value);
-      }
+    format(v) {
+      if (typeof v === "number") return v.toLocaleString();
+      return v ?? "";
+    }
+  }
 
-      // ======================================================
-      // RENDER PRODUCT TABLE
-      // ======================================================
-      function renderProductTable(items) {
-        window.__ddState.level = "product";
-        updateTabs();
+  /* ============================================================
+     DRILLDOWN STATE
+     ============================================================ */
+  const state = {
+    level: "product",
+    product: null,
+    usecase: null,
+    filters: []
+  };
 
-        items = applyChipFilter(items);
-
-        let html = \`
-        <table class="adv-channel-table">
-          <thead><tr>
-            <th>Product</th><th>Ads</th><th>Spend</th><th>Impressions</th>
-          </tr></thead><tbody>\`;
-
-        items.forEach(p => {
-          html += \`
-            <tr class="dd-row" data-value="\${p.name}">
-              <td>\${p.name}</td>
-              <td>\${p.adsCount}</td>
-              <td>$\${p.spend.toLocaleString()}</td>
-              <td>\${p.impressions.toLocaleString()}</td>
-            </tr>\`;
-        });
-
-        wrapper.innerHTML = html + "</tbody></table>";
-
-        wrapper.querySelectorAll(".dd-row").forEach(row => {
-          row.addEventListener("click", () => {
-            const product = row.dataset.value;
-
-            window.__ddState.filters = [
-              { type: "product", value: product }
-            ];
-            window.__ddState.product = product;
-
-            renderChips();
-            loadUseCasesFiltered(product);
-          });
-        });
-      }
-
-      // ======================================================
-      // RENDER USE CASE TABLE
-      // ======================================================
-      function renderUseCaseTable(items) {
-        window.__ddState.level = "usecase";
-        updateTabs();
-
-        items = applyChipFilter(items);
-
-        let html = \`
-        <table class="adv-channel-table">
-          <thead><tr>
-            <th>Use Case</th><th>Ads</th><th>Spend</th><th>Impressions</th>
-          </tr></thead><tbody>\`;
-
-        items.forEach(uc => {
-          html += \`
-            <tr class="dd-row" data-value="\${uc.name}">
-              <td>\${uc.name}</td>
-              <td>\${uc.adsCount}</td>
-              <td>$\${uc.spend.toLocaleString()}</td>
-              <td>\${uc.impressions.toLocaleString()}</td>
-            </tr>\`;
-        });
-
-        wrapper.innerHTML = html + "</tbody></table>";
-
-        wrapper.querySelectorAll(".dd-row").forEach(row => {
-          row.addEventListener("click", () => {
-            const usecase = row.dataset.value;
-
-            window.__ddState.filters.push({ type: "usecase", value: usecase });
-            window.__ddState.usecase = usecase;
-
-            renderChips();
-            loadAnglesOR(
-              window.__ddState.product,
-              usecase
-            );
-          });
-        });
-      }
-
-      // ======================================================
-      // RENDER ANGLE TABLE
-      // ======================================================
-      function renderAngleTable(items) {
-        window.__ddState.level = "angle";
-        updateTabs();
-
-        items = applyChipFilter(items);
-
-        let html = \`
-        <table class="adv-channel-table">
-          <thead><tr>
-            <th>Angle</th><th>Ads</th><th>Spend</th><th>Impressions</th>
-          </tr></thead><tbody>\`;
-
-        items.forEach(a => {
-          html += \`
-            <tr class="dd-row" data-value="\${a.name}">
-              <td>\${a.name}</td>
-              <td>\${a.adsCount}</td>
-              <td>$\${a.spend.toLocaleString()}</td>
-              <td>\${a.impressions.toLocaleString()}</td>
-            </tr>\`;
-        });
-
-        wrapper.innerHTML = html + "</tbody></table>";
-      }
-
-      // ======================================================
-      // LOAD FUNCTIONS
-      // ======================================================
-      function loadProducts() {
-        fetch(API_PRODUCTS)
-          .then(r => r.json())
-          .then(d => renderProductTable(d.products));
-      }
-
-      function loadAllUseCases() {
-        fetch(API_USECASES)
-          .then(r => r.json())
-          .then(d => renderUseCaseTable(d.usecases));
-      }
-
-      function loadAllAngles() {
-        fetch(API_ANGLES)
-          .then(r => r.json())
-          .then(d => renderAngleTable(d.angles));
-      }
-
-      function loadUseCasesFiltered(product) {
-        fetch(API_USECASES + "?product=" + encodeURIComponent(product))
-          .then(r => r.json())
-          .then(d => renderUseCaseTable(d.usecases));
-      }
-
-      // ======================================================
-      // NEW: OR LOGIC FOR ANGLES
-      // ======================================================
-      function loadAnglesOR(product, usecase) {
-        let url = API_ANGLES;
-
-        const params = [];
-        if (product) params.push("product=" + encodeURIComponent(product));
-        if (usecase) params.push("usecase=" + encodeURIComponent(usecase));
-
-        if (params.length > 0) url += "?" + params.join("&");
-
-        fetch(url)
-          .then(r => r.json())
-          .then(d => renderAngleTable(d.angles));
-      }
-
-      // ======================================================
-      // INIT
-      // ======================================================
-      attachTabHandlers();
-      loadProducts();
-      renderChips();
-
+  /* ============================================================
+     CHIP UI
+     ============================================================ */
+  function renderChips() {
+    chipContainer.innerHTML = "";
+    state.filters.forEach((f, idx) => {
+      const chip = document.createElement("div");
+      chip.className = "dd-chip";
+      chip.innerHTML = \`
+        <span class="dd-chip-label">\${f.type}: \${f.value}</span>
+        <div class="dd-chip-remove">✕</div>
+      \`;
+      chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
+        state.filters.splice(idx, 1);
+        syncStateFromChips();
+        loadLevel();
+      });
+      chipContainer.appendChild(chip);
     });
+  }
+
+  function syncStateFromChips() {
+    state.product = null;
+    state.usecase = null;
+    state.filters.forEach(f => {
+      if (f.type === "product") state.product = f.value;
+      if (f.type === "usecase") state.usecase = f.value;
+    });
+  }
+
+  /* ============================================================
+     UNIVERSAL FETCHER
+     ============================================================ */
+  function buildApiUrl() {
+    if (state.level === "product") return API_BASE + "/products";
+    if (state.level === "usecase") {
+      let url = API_BASE + "/usecases";
+      if (state.product) url += "?product=" + encodeURIComponent(state.product);
+      return url;
+    }
+    if (state.level === "angle") {
+      const params = [];
+      if (state.product) params.push("product=" + encodeURIComponent(state.product));
+      if (state.usecase) params.push("usecase=" + encodeURIComponent(state.usecase));
+      return API_BASE + "/angles" + (params.length ? "?" + params.join("&") : "");
+    }
+  }
+
+  async function loadLevel() {
+    const url = buildApiUrl();
+    const res = await fetch(url);
+    const json = await res.json();
+    table.setData(json);
+    updateTabs();
+    renderChips();
+  }
+
+  /* ============================================================
+     TAB HANDLERS
+     ============================================================ */
+  function updateTabs() {
+    const tabs = card.querySelectorAll(".drilldown-tab-button");
+    tabs.forEach(btn => {
+      btn.classList.toggle("is-current", btn.dataset.tab === state.level);
+    });
+  }
+
+  function attachTabEvents() {
+    const tabs = card.querySelectorAll(".drilldown-tab-button");
+    tabs.forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.level = btn.dataset.tab;
+        state.product = null;
+        state.usecase = null;
+        state.filters = [];
+        loadLevel();
+      });
+    });
+  }
+
+  /* ============================================================
+     INIT UNIVERSAL TABLE
+     ============================================================ */
+  const table = new UniversalTable(wrapper, (value) => {
+    if (state.level === "product") {
+      state.product = value;
+      state.filters = [{ type: "product", value }];
+      state.level = "usecase";
+    } else if (state.level === "usecase") {
+      state.usecase = value;
+      state.filters.push({ type: "usecase", value });
+      state.level = "angle";
+    }
+    loadLevel();
+  });
+
+  /* ============================================================
+     INIT
+     ============================================================ */
+  attachTabEvents();
+  loadLevel();
+  renderChips();
+
+});
   `;
 
   res.setHeader("Content-Type", "text/javascript");

@@ -6,9 +6,6 @@ export default function handler(req, res) {
     const filePath = path.join(process.cwd(), "data", "ads.json");
     const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
-    // ===================================================
-    // ENABLE CORS (required by Webflow)
-    // ===================================================
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -17,9 +14,9 @@ export default function handler(req, res) {
       return res.status(200).end();
     }
 
-    // ===================================================
-    // FULL PRODUCT LIST (This endpoint always full-mode)
-    // ===================================================
+    // -------------------------------------------
+    // GROUP BY PRODUCT
+    // -------------------------------------------
     const map = {};
 
     ads.forEach(ad => {
@@ -39,9 +36,17 @@ export default function handler(req, res) {
       map[product].impressions += Number(ad.impressions) || 0;
     });
 
-    const result = Object.values(map);
+    const rows = Object.values(map);
 
-    return res.status(200).json({ products: result });
+    // -------------------------------------------
+    // UNIVERSAL FORMAT FOR DRILLDOWN TABLE UI
+    // -------------------------------------------
+    const response = {
+      columns: ["name", "adsCount", "spend", "impressions"],
+      rows: rows
+    };
+
+    return res.status(200).json(response);
 
   } catch (err) {
     console.error("API ERROR /api/products:", err);
