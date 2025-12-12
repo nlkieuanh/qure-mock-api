@@ -170,7 +170,7 @@ function renderSearchDropdown(list) {
   return '<div class="dd-search-item" data-value="' + item.value + '">' +
            '<strong>' + item.type + '</strong>&nbsp;' + item.value +
          '</div>';
-}).join("");
+}).join(""); }
 
   searchDropdown.classList.remove("is-hidden");
 
