@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const wrapper = card.querySelector(".adv-channel-table-wrapper");
   const chipContainer = card.querySelector(".dd-chips-container");
+  const searchInput = card.querySelector(".dd-search-input");
+  const searchDropdown = card.querySelector(".dd-search-dropdown");
+
 
   const API_BASE = "https://qure-mock-api.vercel.app/api";
 
@@ -116,6 +119,105 @@ document.addEventListener("DOMContentLoaded", function () {
     usecase: null,
     filters: []
   };
+  /* ============================================================
+   SEARCH BAR (LEVEL-BASED)
+   ============================================================ */
+
+function initSearch() {
+  if (!searchInput || !searchDropdown) return;
+
+  searchInput.addEventListener("input", (e) => {
+    const term = e.target.value.trim().toLowerCase();
+    if (!term) {
+      hideSearchDropdown();
+      return;
+    }
+    const suggestions = buildSuggestions(term);
+    renderSearchDropdown(suggestions);
+  });
+
+  document.addEventListener("click", (evt) => {
+    if (!card.contains(evt.target)) {
+      hideSearchDropdown();
+    }
+  });
+}
+
+function buildSuggestions(term) {
+  const data = table?.data ?? { columns: [], rows: [] };
+  const cols = data.columns ?? [];
+  const rows = data.rows ?? [];
+  if (!cols.length || !rows.length) return [];
+
+  const nameKey = cols[0]; 
+  return rows
+    .filter(row => String(row[nameKey] ?? "").toLowerCase().includes(term))
+    .slice(0, 10)
+    .map(row => ({
+      value: row[nameKey],
+      type: state.level
+    }));
+}
+
+function renderSearchDropdown(list) {
+  if (!list.length) {
+    searchDropdown.innerHTML = '<div class="dd-search-item">No results</div>';
+    searchDropdown.classList.remove("is-hidden");
+    return;
+  }
+
+  searchDropdown.innerHTML = list.map(ifunction (item) {
+  return '<div class="dd-search-item" data-value="' + item.value + '">' +
+           '<strong>' + item.type + '</strong>&nbsp;' + item.value +
+         '</div>';
+}).join("");
+
+  searchDropdown.classList.remove("is-hidden");
+
+  searchDropdown.querySelectorAll(".dd-search-item").forEach(el => {
+    el.addEventListener("click", () => {
+      handleSearchSelect(el.dataset.value);
+    });
+  });
+}
+
+function hideSearchDropdown() {
+  if (!searchDropdown) return;
+  searchDropdown.classList.add("is-hidden");
+  searchDropdown.innerHTML = "";
+}
+
+function handleSearchSelect(value) {
+  // Clear input & dropdown
+  searchInput.value = "";
+  hideSearchDropdown();
+
+  if (state.level === "product") {
+    state.product = value;
+    state.filters = [{ type: "product", value }];
+    state.level = "usecase";
+  } else if (state.level === "usecase") {
+    state.usecase = value;
+    const hasProductChip = state.filters.some(f => f.type === "product");
+    if (!hasProductChip && state.product) {
+      state.filters.unshift({ type: "product", value: state.product });
+    }
+    const hasUsecaseChip = state.filters.some(f => f.type === "usecase" && f.value === value);
+    if (!hasUsecaseChip) {
+      state.filters.push({ type: "usecase", value });
+    }
+    state.level = "angle";
+  } else if (state.level === "angle") {
+  
+    const hasAngleChip = state.filters.some(f => f.type === "angle" && f.value === value);
+    if (!hasAngleChip) {
+      state.filters.push({ type: "angle", value });
+    }
+
+  }
+
+  loadLevel();
+}
 
   /* ============================================================
      CHIP UI
@@ -217,6 +319,7 @@ document.addEventListener("DOMContentLoaded", function () {
      INIT
      ============================================================ */
   attachTabEvents();
+  initSearch();
   loadLevel();
   renderChips();
 
