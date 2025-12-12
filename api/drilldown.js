@@ -166,20 +166,21 @@ function renderSearchDropdown(list) {
     return;
   }
 
-  searchDropdown.innerHTML = list.map(ifunction (item) {
-  return '<div class="dd-search-item" data-value="' + item.value + '">' +
-           '<strong>' + item.type + '</strong>&nbsp;' + item.value +
-         '</div>';
-}).join(""); }
+  searchDropdown.innerHTML = list.map(function(item) {
+    return '<div class="dd-search-item" data-value="' + item.value + '">' +
+             '<strong>' + item.type + '</strong>&nbsp;' + item.value +
+           '</div>';
+  }).join("");
 
   searchDropdown.classList.remove("is-hidden");
 
-  searchDropdown.querySelectorAll(".dd-search-item").forEach(el => {
-    el.addEventListener("click", () => {
+  searchDropdown.querySelectorAll(".dd-search-item").forEach(function(el) {
+    el.addEventListener("click", function() {
       handleSearchSelect(el.dataset.value);
     });
   });
 }
+
 
 function hideSearchDropdown() {
   if (!searchDropdown) return;
