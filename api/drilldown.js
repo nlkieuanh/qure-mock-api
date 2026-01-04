@@ -238,7 +238,8 @@ export default function handler(req, res) {
 
         item.style.display = "block";
         item.classList.add("is-suggestion");
-        item.textContent = r?.name ?? "";
+        const levelLabel = state.level.charAt(0).toUpperCase() + state.level.slice(1);
+        item.textContent = "[" + levelLabel + "] " + (r?.name ?? "");
         item.dataset.value = r?.name ?? "";
 
         item.addEventListener("click", () => {
