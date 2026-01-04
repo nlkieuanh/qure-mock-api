@@ -223,28 +223,44 @@ export default function handler(req, res) {
         return;
       }
 
-      const url = buildUrl({ query: q, level: state.level });
-      const json = await fetchJson(url);
-      const rows = Array.isArray(json?.rows) ? json.rows : [];
+      // Parallel fetch for Product, Usecase, Angle
+      const levels = ["product", "usecase", "angle"];
+      const promises = levels.map((lvl) =>
+        fetchJson(buildUrl({ query: q, level: lvl })).then((json) => ({
+          lvl,
+          rows: Array.isArray(json?.rows) ? json.rows : [],
+        }))
+      );
 
-      // Build dropdown items from row.name
+      const results = await Promise.all(promises);
+
+      // Merge results
+      const allSuggestions = [];
+      results.forEach(({ lvl, rows }) => {
+        const label = lvl.charAt(0).toUpperCase() + lvl.slice(1);
+        // Take top 5 from each category
+        rows.slice(0, 5).forEach((r) => {
+          allSuggestions.push({ name: r.name, label });
+        });
+      });
+
       dropdown.innerHTML = "";
       if (dropdownItemTemplate) dropdown.appendChild(dropdownItemTemplate);
 
-      rows.slice(0, 10).forEach((r) => {
+      // Render merged suggestions
+      allSuggestions.forEach((itemData) => {
         const item = dropdownItemTemplate
           ? dropdownItemTemplate.cloneNode(true)
           : document.createElement("div");
 
         item.style.display = "block";
         item.classList.add("is-suggestion");
-        const levelLabel = state.level.charAt(0).toUpperCase() + state.level.slice(1);
-        item.textContent = "[" + levelLabel + "] " + (r?.name ?? "");
-        item.dataset.value = r?.name ?? "";
+        
+        // Format: [Type] Name
+        item.textContent = "[" + itemData.label + "] " + (itemData.name ?? "");
+        item.dataset.value = itemData.name ?? "";
 
         item.addEventListener("click", () => {
-          // Keep query as typed; selecting suggestion can set query = suggestion (optional)
-          // Here: set search to clicked value for convenience
           state.query = String(item.dataset.value ?? "");
           if (searchInput) searchInput.value = state.query;
 

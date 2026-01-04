@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
     const BASE_URL = "https://api.foresightiq.ai/";
     const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
-    const DEFAULT_QUERY = "vs";
+    const DEFAULT_QUERY = "";
 
     const level = req.query?.level || "product"; // product | usecase | angle
     const query = req.query?.query || "";
