@@ -1,7 +1,4 @@
 export default function handler(req, res) {
-  const initialAngle = req.query.angle || null;
-  const initialPlatform = req.query.platform || null;
-
   const code = `
   document.addEventListener("DOMContentLoaded", () => {
     const card = document.querySelector(".card-block-wrap.product-combination-card");
@@ -20,15 +17,14 @@ export default function handler(req, res) {
     // Hide template item if exists
     if (dropdownItemTemplate) dropdownItemTemplate.style.display = "none";
 
-    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown-data";
+    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown";
 
     const state = {
       level: "product",      // product | usecase | angle
       query: "",
       product: null,
       usecase: null,
-      angle: ${JSON.stringify(initialAngle)}, // Initialize angle from query
-      platform: ${JSON.stringify(initialPlatform)}, // Initialize platform from query
+      angle: null,
       lastRows: [],
       debounceTimer: null,
       suggestionTimer: null,
@@ -65,11 +61,9 @@ export default function handler(req, res) {
 
       const product = overrides.product ?? state.product;
       const usecase = overrides.usecase ?? state.usecase;
-      const angle = overrides.angle ?? state.angle; // Add angle to URL params
 
       if (product) params.set("product", product);
       if (usecase) params.set("usecase", usecase);
-      if (angle) params.set("angle", angle); // Add angle to URL params
 
       return \`\${API_DRILLDOWN}?\${params.toString()}\`;
     }
@@ -223,44 +217,27 @@ export default function handler(req, res) {
         return;
       }
 
-      // Parallel fetch for Product, Usecase, Angle
-      const levels = ["product", "usecase", "angle"];
-      const promises = levels.map((lvl) =>
-        fetchJson(buildUrl({ query: q, level: lvl })).then((json) => ({
-          lvl,
-          rows: Array.isArray(json?.rows) ? json.rows : [],
-        }))
-      );
+      const url = buildUrl({ query: q, level: state.level });
+      const json = await fetchJson(url);
+      const rows = Array.isArray(json?.rows) ? json.rows : [];
 
-      const results = await Promise.all(promises);
-
-      // Merge results
-      const allSuggestions = [];
-      results.forEach(({ lvl, rows }) => {
-        const label = lvl.charAt(0).toUpperCase() + lvl.slice(1);
-        // Take top 5 from each category
-        rows.slice(0, 5).forEach((r) => {
-          allSuggestions.push({ name: r.name, label });
-        });
-      });
-
+      // Build dropdown items from row.name
       dropdown.innerHTML = "";
       if (dropdownItemTemplate) dropdown.appendChild(dropdownItemTemplate);
 
-      // Render merged suggestions
-      allSuggestions.forEach((itemData) => {
+      rows.slice(0, 10).forEach((r) => {
         const item = dropdownItemTemplate
           ? dropdownItemTemplate.cloneNode(true)
           : document.createElement("div");
 
         item.style.display = "block";
         item.classList.add("is-suggestion");
-        
-        // Format: [Type] Name
-        item.textContent = "[" + itemData.label + "] " + (itemData.name ?? "");
-        item.dataset.value = itemData.name ?? "";
+        item.textContent = r?.name ?? "";
+        item.dataset.value = r?.name ?? "";
 
         item.addEventListener("click", () => {
+          // Keep query as typed; selecting suggestion can set query = suggestion (optional)
+          // Here: set search to clicked value for convenience
           state.query = String(item.dataset.value ?? "");
           if (searchInput) searchInput.value = state.query;
 
