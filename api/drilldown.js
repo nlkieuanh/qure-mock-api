@@ -4,7 +4,7 @@ export default function handler(req, res) {
     const card = document.querySelector(".card-block-wrap.product-combination-card");
     if (!card) return;
 
-    // --- Elements (match your Webflow structure)
+    // --- Elements
     const tabButtons = card.querySelectorAll(".drilldown-tab-button");
     const searchInput = card.querySelector(".dd-search-input");
     const dropdown = card.querySelector(".dd-search-dropdown");
@@ -14,10 +14,11 @@ export default function handler(req, res) {
 
     if (!tableRender) return;
 
-    // Hide template item if exists
+    // Hide template
     if (dropdownItemTemplate) dropdownItemTemplate.style.display = "none";
 
-    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown-data";
+    // NEW: Pointing to the raw ads endpoint
+    const API_ADS = "https://qure-mock-api.vercel.app/api/ads";
 
     const state = {
       level: "product",      // product | usecase | angle
@@ -25,7 +26,10 @@ export default function handler(req, res) {
       product: null,
       usecase: null,
       angle: null,
-      lastRows: [],
+      
+      // Cache raw ads here to avoid refetching heavily
+      rawAds: [],
+      
       debounceTimer: null,
       suggestionTimer: null,
     };
@@ -34,12 +38,7 @@ export default function handler(req, res) {
     // Utils
     // -------------------------------
     const escapeHtml = (s) =>
-      String(s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+      String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 
     const setDropdownOpen = (open) => {
       if (!dropdown) return;
@@ -51,27 +50,122 @@ export default function handler(req, res) {
       return s.length >= 10 ? s.slice(0, 10) : s;
     };
 
-    function buildUrl(overrides = {}) {
-      const params = new URLSearchParams();
-      const lvl = overrides.level ?? state.level;
-      const q = overrides.query ?? state.query;
-
-      params.set("level", lvl);
-      if (q) params.set("query", q);
-
-      const product = overrides.product ?? state.product;
-      const usecase = overrides.usecase ?? state.usecase;
-
-      if (product) params.set("product", product);
-      if (usecase) params.set("usecase", usecase);
-
-      return \`\${API_DRILLDOWN}?\${params.toString()}\`;
-    }
-
     async function fetchJson(url) {
       const res = await fetch(url, { headers: { Accept: "application/json" } });
       if (!res.ok) return null;
       return res.json().catch(() => null);
+    }
+    
+    // -------------------------------
+    // LOGIC: Aggregation (Moved from server)
+    // -------------------------------
+    function bump(map, value) {
+      const v = String(value ?? "Unknown").trim() || "Unknown";
+      map.set(v, (map.get(v) || 0) + 1);
+    }
+
+    function formatTop(map, topN = 5) {
+      const arr = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+      const top = arr.slice(0, topN).map(([k, c]) => \`\${k} (\${c})\`);
+      const rest = arr.length > topN ? \` + \${arr.length - topN} more\` : "";
+      return top.join(", ") + rest;
+    }
+
+    function processData(ads) {
+      // 1. Filter
+      const filtered = ads.filter(ad => {
+        // Strict filters
+        if (state.product && String(ad?.f_products ?? "") !== state.product) return false;
+        if (state.usecase && String(ad?.f_use_case ?? "") !== state.usecase) return false;
+        // Angle is not a strict filter for the table unless you want it to be. 
+        // For standard drilldown: Product -> Usecase -> Angle, we stop at Angle view.
+        return true;
+      });
+
+      // 2. Group
+      const groupField = 
+        state.level === "product" ? "f_products" :
+        state.level === "usecase" ? "f_use_case" :
+        "f_angles";
+
+      const groups = new Map();
+
+      for (const ad of filtered) {
+        const name = String(ad?.[groupField] ?? "Unknown").trim() || "Unknown";
+        if (!groups.has(name)) {
+          groups.set(name, {
+            name,
+            adsCount: 0,
+            usecasesMap: new Map(),
+            anglesMap: new Map(),
+            offersMap: new Map(),
+            promotionsMap: new Map(),
+            tsMap: new Map(),
+          });
+        }
+
+        const g = groups.get(name);
+        g.adsCount += 1;
+
+        bump(g.usecasesMap, ad?.f_use_case);
+        bump(g.anglesMap, ad?.f_angles);
+        bump(g.offersMap, ad?.f_offers);
+        bump(g.promotionsMap, ad?.f_promotion);
+
+        const date = String(ad?.start_date ?? "").slice(0, 10);
+        if (date) g.tsMap.set(date, (g.tsMap.get(date) || 0) + 1);
+      }
+
+      // 3. Format Rows
+      const rows = Array.from(groups.values()).map(g => ({
+        name: g.name,
+        adsCount: g.adsCount,
+        usecases: formatTop(g.usecasesMap),
+        angles: formatTop(g.anglesMap),
+        offers: formatTop(g.offersMap),
+        promotions: formatTop(g.promotionsMap),
+        timeseries: Array.from(g.tsMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([date, adsCount]) => ({ date, adsCount })),
+      }));
+      
+      // Sort rows by adsCount desc
+      rows.sort((a, b) => b.adsCount - a.adsCount);
+
+      return {
+        columns: ["name", "adsCount", "usecases", "angles", "offers", "promotions"],
+        rows
+      };
+    }
+
+    // -------------------------------
+    // Data Loading
+    // -------------------------------
+    async function fetchRawAds(query) {
+      // Build URL to /api/ads
+      // We pass the search query to the API so it filters broad matches vs DB
+      const u = new URL(API_ADS);
+      if (query) u.searchParams.set("query", query);
+      // We do NOT pass product/usecase params to /api/ads because that endpoint returns a flat list 
+      // matching the *search text*. We do the structural filtering in JS (processData).
+      
+      const json = await fetchJson(u.toString());
+      return Array.isArray(json) ? json : [];
+    }
+
+    async function loadTable() {
+      renderChips();
+
+      // OPTIMIZATION: Only fetch if query changed or rawAds is empty? 
+      // For now, simple approach: fetch fresh on every major action ensures consistency
+      // But to avoid flickering on tab switch, we could check state. 
+      // Let's fetch fresh to be safe.
+      
+      const ads = await fetchRawAds(state.query);
+      state.rawAds = ads; // Store for other potential uses
+      
+      const { columns, rows } = processData(ads);
+      renderTable(columns, rows);
     }
 
     // -------------------------------
@@ -88,13 +182,12 @@ export default function handler(req, res) {
         btn.addEventListener("click", () => {
           const lvl = btn.dataset.tab;
           if (!lvl) return;
-
-          // NEW LOGIC: do NOT reset search, keep global filter
           state.level = lvl;
-
-          // If user goes to product tab, keep deeper filters but view at product level
-          // (optional behavior: you can clear deeper filters when switching up, but requirement says keep filtered universe)
           updateTabs();
+          
+          // Re-process data without re-fetching if we want to be fast, 
+          // but fetching ensures we don't have stale cached data if logic changes.
+          // Let's re-run load so it feels standard.
           loadTable();
         });
       });
@@ -108,7 +201,6 @@ export default function handler(req, res) {
       chipsContainer.innerHTML = "";
 
       const chips = [];
-
       if (state.query) chips.push({ type: "Search", value: state.query, key: "query" });
       if (state.product) chips.push({ type: "Product", value: state.product, key: "product" });
       if (state.usecase) chips.push({ type: "Usecase", value: state.usecase, key: "usecase" });
@@ -132,7 +224,7 @@ export default function handler(req, res) {
           }
           if (key === "product") {
             state.product = null;
-            state.usecase = null; // clear deeper
+            state.usecase = null;
           }
           if (key === "usecase") {
             state.usecase = null;
@@ -151,7 +243,6 @@ export default function handler(req, res) {
       const cols = Array.isArray(columns) ? columns : [];
       const data = Array.isArray(rows) ? rows : [];
 
-      // Minimal table HTML
       let html = \`
         <div class="adv-channel-table-wrapper">
           <table class="adv-channel-table">
@@ -165,7 +256,10 @@ export default function handler(req, res) {
         html += "<tr data-name=\\"" + escapeHtml(r?.name ?? "") + "\\">";
         cols.forEach((c) => {
           let v = r?.[c];
-          if (c === "start_date") v = prettyDate(v);
+          if (c === "timeseries") {
+             // Basic sparkline placeholder or just length
+             v = (Array.isArray(v) ? v.length : 0) + " days active"; 
+          }
           html += "<td>" + escapeHtml(v ?? "") + "</td>";
         });
         html += "</tr>";
@@ -174,7 +268,7 @@ export default function handler(req, res) {
       html += "</tbody></table></div>";
       tableRender.innerHTML = html;
 
-      // Row click = drill down (product -> usecase -> angle)
+      // Drilldown logic
       const trs = tableRender.querySelectorAll("tbody tr");
       trs.forEach((tr) => {
         tr.addEventListener("click", () => {
@@ -189,63 +283,67 @@ export default function handler(req, res) {
             state.usecase = name;
             state.level = "angle";
           } else {
-            // angle level: keep as filter? (optional)
-            // You can store angle if later want ads list
-            state.angle = name;
+             // End of drilldown
+             state.angle = name;
           }
-
           updateTabs();
-          renderChips();
           loadTable();
         });
       });
     }
 
     // -------------------------------
-    // Suggestions (dropdown)
-    // Suggestions show group names for CURRENT level under current global filter.
-    // This matches your new logic: typing angle text in product tab shows products that match.
+    // Suggestions
     // -------------------------------
     async function loadSuggestions() {
       if (!dropdown || !searchInput) return;
-
       const q = String(searchInput.value ?? "").trim();
       if (!q) {
         setDropdownOpen(false);
-        dropdown.innerHTML = "";
-        if (dropdownItemTemplate) dropdown.appendChild(dropdownItemTemplate);
         return;
       }
+      
+      // For suggestions, we can fetch from API or just use local filtering if we already had data.
+      // Simpler to just re-fetch light or use cached. 
+      // Ideally, the API would have a suggestion endpoint, but we can reuse /api/ads with query.
+      
+      const ads = await fetchRawAds(q);
+      // Unique names relevant to current level? Or just unique products?
+      // User request implies "search" -> finds products.
+      // Let's suggest unique 'names' based on current level (like existing logic).
+      
+      const groupField = 
+        state.level === "product" ? "f_products" :
+        state.level === "usecase" ? "f_use_case" :
+        "f_angles";
 
-      const url = buildUrl({ query: q, level: state.level });
-      const json = await fetchJson(url);
-      const rows = Array.isArray(json?.rows) ? json.rows : [];
+      const uniqueNames = new Set();
+      ads.forEach(ad => {
+         const val = ad?.[groupField];
+         if (val) uniqueNames.add(val);
+      });
+      
+      const suggestions = Array.from(uniqueNames).slice(0, 10);
 
-      // Build dropdown items from row.name
       dropdown.innerHTML = "";
       if (dropdownItemTemplate) dropdown.appendChild(dropdownItemTemplate);
 
-      rows.slice(0, 10).forEach((r) => {
+      suggestions.forEach((name) => {
         const item = dropdownItemTemplate
           ? dropdownItemTemplate.cloneNode(true)
           : document.createElement("div");
 
         item.style.display = "block";
         item.classList.add("is-suggestion");
-        item.textContent = r?.name ?? "";
-        item.dataset.value = r?.name ?? "";
+        item.textContent = name;
+        item.dataset.value = name;
 
         item.addEventListener("click", () => {
-          // Keep query as typed; selecting suggestion can set query = suggestion (optional)
-          // Here: set search to clicked value for convenience
-          state.query = String(item.dataset.value ?? "");
+          state.query = name; 
           if (searchInput) searchInput.value = state.query;
-
           setDropdownOpen(false);
-          renderChips();
           loadTable();
         });
-
         dropdown.appendChild(item);
       });
 
@@ -259,13 +357,9 @@ export default function handler(req, res) {
         clearTimeout(state.debounceTimer);
         clearTimeout(state.suggestionTimer);
 
-        // suggestions faster
         state.suggestionTimer = setTimeout(loadSuggestions, 250);
-
-        // load table after user stops typing
         state.debounceTimer = setTimeout(() => {
           state.query = String(searchInput.value ?? "").trim();
-          renderChips();
           loadTable();
         }, 450);
       });
@@ -276,31 +370,13 @@ export default function handler(req, res) {
 
       document.addEventListener("click", (e) => {
         if (!dropdown) return;
-        const inside = card.contains(e.target);
-        if (!inside) setDropdownOpen(false);
+        if (!card.contains(e.target)) setDropdownOpen(false);
       });
-    }
-
-    // -------------------------------
-    // Load table from backend drilldown endpoint
-    // -------------------------------
-    async function loadTable() {
-      renderChips();
-
-      const url = buildUrl();
-      const json = await fetchJson(url);
-
-      const columns = Array.isArray(json?.columns) ? json.columns : ["name", "adsCount"];
-      const rows = Array.isArray(json?.rows) ? json.rows : [];
-
-      state.lastRows = rows;
-      renderTable(columns, rows);
     }
 
     // -------------------------------
     // Init
     // -------------------------------
-    // Detect initial tab
     const current = Array.from(tabButtons).find((b) => b.classList.contains("is-current"));
     if (current?.dataset?.tab) state.level = current.dataset.tab;
 
