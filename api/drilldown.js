@@ -1,4 +1,7 @@
 export default function handler(req, res) {
+  const initialAngle = req.query.angle || null;
+  const initialPlatform = req.query.platform || null;
+
   const code = `
   document.addEventListener("DOMContentLoaded", () => {
     const card = document.querySelector(".card-block-wrap.product-combination-card");
@@ -17,14 +20,15 @@ export default function handler(req, res) {
     // Hide template item if exists
     if (dropdownItemTemplate) dropdownItemTemplate.style.display = "none";
 
-    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown";
+    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown-data";
 
     const state = {
       level: "product",      // product | usecase | angle
       query: "",
       product: null,
       usecase: null,
-      angle: null,
+      angle: ${JSON.stringify(initialAngle)}, // Initialize angle from query
+      platform: ${JSON.stringify(initialPlatform)}, // Initialize platform from query
       lastRows: [],
       debounceTimer: null,
       suggestionTimer: null,
@@ -61,9 +65,11 @@ export default function handler(req, res) {
 
       const product = overrides.product ?? state.product;
       const usecase = overrides.usecase ?? state.usecase;
+      const angle = overrides.angle ?? state.angle; // Add angle to URL params
 
       if (product) params.set("product", product);
       if (usecase) params.set("usecase", usecase);
+      if (angle) params.set("angle", angle); // Add angle to URL params
 
       return \`\${API_DRILLDOWN}?\${params.toString()}\`;
     }
