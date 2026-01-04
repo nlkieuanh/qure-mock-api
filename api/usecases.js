@@ -34,6 +34,7 @@ export default async function handler(req, res) {
 
   const { searchParams } = new URL(req.url, "http://localhost");
   const product = searchParams.get("product");
+  const angle = searchParams.get("angle");
 
   const baseUrl = "https://api.foresightiq.ai/";
   const member = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
@@ -56,10 +57,18 @@ export default async function handler(req, res) {
     const map = {};
 
     ads.forEach(ad => {
+      // 1. FILTER
       if (product && ad.f_products !== product) return;
 
-      let useCases = [];
+      if (angle) {
+        let ang = [];
+        if (Array.isArray(ad.f_angles)) ang = ad.f_angles;
+        else if (typeof ad.f_angles === "string") ang = [ad.f_angles];
+        if (!ang.includes(angle)) return;
+      }
 
+      // 2. EXTRACT USE CASES
+      let useCases = [];
       if (Array.isArray(ad.f_use_case) && ad.f_use_case.length > 0) {
         useCases = ad.f_use_case;
       } else if (typeof ad.f_use_case === "string" && ad.f_use_case.trim() !== "") {
@@ -68,6 +77,7 @@ export default async function handler(req, res) {
         useCases = ["Unknown"];
       }
 
+      // 3. AGGREGATE
       useCases.forEach(name => {
         if (!map[name]) {
           map[name] = {

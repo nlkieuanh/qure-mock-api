@@ -3,7 +3,7 @@ export default function handler(req, res) {
 /* ============================================================
    UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
    Cleanest version — no legacy render code
-   Supports: dynamic table, sorting, drilldown levels
+   Supports: dynamic table, sorting, drilldown levels, global search
    ============================================================ */
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -120,105 +120,122 @@ document.addEventListener("DOMContentLoaded", function () {
     filters: []
   };
   /* ============================================================
-   SEARCH BAR (LEVEL-BASED)
+   SEARCH BAR (GLOBAL)
    ============================================================ */
+  let searchTimer = null;
 
-function initSearch() {
-  if (!searchInput || !searchDropdown) return;
+  function initSearch() {
+    if (!searchInput || !searchDropdown) return;
 
-  searchInput.addEventListener("input", (e) => {
-    const term = e.target.value.trim().toLowerCase();
-    if (!term) {
-      hideSearchDropdown();
+    searchInput.addEventListener("input", (e) => {
+      const term = e.target.value.trim().toLowerCase();
+      if (!term) {
+        hideSearchDropdown();
+        return;
+      }
+      
+      // Debounce to avoid flooding API
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        performGlobalSearch(term);
+      }, 300);
+    });
+
+    document.addEventListener("click", (evt) => {
+      if (!card.contains(evt.target)) {
+        hideSearchDropdown();
+      }
+    });
+  }
+
+  async function performGlobalSearch(term) {
+    // Ideally we have a dedicated search endpoint, but we can reuse /api/ads
+    // or fetch a lightweight list. For now, fetch raw ads to find matches.
+    try {
+      const res = await fetch(API_BASE + "/ads");
+      const ads = await res.json();
+      
+      const suggestions = buildGlobalSuggestions(ads, term);
+      renderSearchDropdown(suggestions);
+    } catch (err) {
+      console.error("Search error", err);
+    }
+  }
+
+  function buildGlobalSuggestions(ads, term) {
+    const products = new Set();
+    const usecases = new Set();
+    const angles = new Set();
+
+    ads.forEach(ad => {
+      // Products
+      if (String(ad.f_products || "").toLowerCase().includes(term)) {
+        products.add(ad.f_products);
+      }
+      // Use Cases
+      const ucs = Array.isArray(ad.f_use_case) ? ad.f_use_case : [ad.f_use_case];
+      ucs.forEach(u => {
+        if (String(u || "").toLowerCase().includes(term)) usecases.add(u);
+      });
+      // Angles
+      const ang = Array.isArray(ad.f_angles) ? ad.f_angles : [ad.f_angles];
+      ang.forEach(a => {
+        if (String(a || "").toLowerCase().includes(term)) angles.add(a);
+      });
+    });
+
+    const list = [];
+    products.forEach(v => list.push({ value: v, type: "product" }));
+    usecases.forEach(v => list.push({ value: v, type: "usecase" }));
+    angles.forEach(v => list.push({ value: v, type: "angle" }));
+
+    return list.slice(0, 15); // limit results
+  }
+
+  function renderSearchDropdown(list) {
+    if (!list.length) {
+      searchDropdown.innerHTML = '<div class="dd-search-item">No results</div>';
+      searchDropdown.classList.remove("is-hidden");
       return;
     }
-    const suggestions = buildSuggestions(term);
-    renderSearchDropdown(suggestions);
-  });
 
-  document.addEventListener("click", (evt) => {
-    if (!card.contains(evt.target)) {
-      hideSearchDropdown();
-    }
-  });
-}
+    searchDropdown.innerHTML = list.map(function(item) {
+      return '<div class="dd-search-item" data-value="' + item.value + '" data-type="' + item.type + '">' +
+               '<strong>' + item.type + '</strong>&nbsp;' + item.value +
+             '</div>';
+    }).join("");
 
-function buildSuggestions(term) {
-  const data = table?.data ?? { columns: [], rows: [] };
-  const cols = data.columns ?? [];
-  const rows = data.rows ?? [];
-  if (!cols.length || !rows.length) return [];
-
-  const nameKey = cols[0]; 
-  return rows
-    .filter(row => String(row[nameKey] ?? "").toLowerCase().includes(term))
-    .slice(0, 10)
-    .map(row => ({
-      value: row[nameKey],
-      type: state.level
-    }));
-}
-
-function renderSearchDropdown(list) {
-  if (!list.length) {
-    searchDropdown.innerHTML = '<div class="dd-search-item">No results</div>';
     searchDropdown.classList.remove("is-hidden");
-    return;
-  }
 
-  searchDropdown.innerHTML = list.map(function(item) {
-    return '<div class="dd-search-item" data-value="' + item.value + '">' +
-             '<strong>' + item.type + '</strong>&nbsp;' + item.value +
-           '</div>';
-  }).join("");
-
-  searchDropdown.classList.remove("is-hidden");
-
-  searchDropdown.querySelectorAll(".dd-search-item").forEach(function(el) {
-    el.addEventListener("click", function() {
-      handleSearchSelect(el.dataset.value);
+    searchDropdown.querySelectorAll(".dd-search-item").forEach(function(el) {
+      el.addEventListener("click", function() {
+        handleSearchSelect(el.dataset.value, el.dataset.type);
+      });
     });
-  });
-}
-
-
-function hideSearchDropdown() {
-  if (!searchDropdown) return;
-  searchDropdown.classList.add("is-hidden");
-  searchDropdown.innerHTML = "";
-}
-
-function handleSearchSelect(value) {
-  // Clear input & dropdown
-  searchInput.value = "";
-  hideSearchDropdown();
-
-  if (state.level === "product") {
-    state.product = value;
-    state.filters = [{ type: "product", value }];
-    state.level = "usecase";
-  } else if (state.level === "usecase") {
-    state.usecase = value;
-    const hasProductChip = state.filters.some(f => f.type === "product");
-    if (!hasProductChip && state.product) {
-      state.filters.unshift({ type: "product", value: state.product });
-    }
-    const hasUsecaseChip = state.filters.some(f => f.type === "usecase" && f.value === value);
-    if (!hasUsecaseChip) {
-      state.filters.push({ type: "usecase", value });
-    }
-    state.level = "angle";
-  } else if (state.level === "angle") {
-  
-    const hasAngleChip = state.filters.some(f => f.type === "angle" && f.value === value);
-    if (!hasAngleChip) {
-      state.filters.push({ type: "angle", value });
-    }
-
   }
 
-  loadLevel();
-}
+
+  function hideSearchDropdown() {
+    if (!searchDropdown) return;
+    searchDropdown.classList.add("is-hidden");
+    searchDropdown.innerHTML = "";
+  }
+
+  function handleSearchSelect(value, type) {
+    // Clear input & dropdown
+    searchInput.value = "";
+    hideSearchDropdown();
+
+    // Logic: Add filter regardless of current tab
+    // Check if filter exists
+    const exists = state.filters.some(f => f.type === type && f.value === value);
+    if (!exists) {
+      state.filters.push({ type, value });
+    }
+
+    syncStateFromChips(); // Update specific vars like state.product if needed
+    loadLevel(); // Reload current table with new filters
+  }
 
   /* ============================================================
      CHIP UI
@@ -242,30 +259,28 @@ function handleSearchSelect(value) {
   }
 
   function syncStateFromChips() {
-    state.product = null;
-    state.usecase = null;
-    state.filters.forEach(f => {
-      if (f.type === "product") state.product = f.value;
-      if (f.type === "usecase") state.usecase = f.value;
-    });
+    // We keep state.product / state.usecase primarily for row-click drilldown logic
+    // But filters are the source of truth for API calls now.
+    
+    // Optional: if we want to "reset" level if product is removed? 
+    // For now, keep it simple.
   }
 
   /* ============================================================
      UNIVERSAL FETCHER
      ============================================================ */
   function buildApiUrl() {
-    if (state.level === "product") return API_BASE + "/products";
-    if (state.level === "usecase") {
-      let url = API_BASE + "/usecases";
-      if (state.product) url += "?product=" + encodeURIComponent(state.product);
-      return url;
-    }
-    if (state.level === "angle") {
-      const params = [];
-      if (state.product) params.push("product=" + encodeURIComponent(state.product));
-      if (state.usecase) params.push("usecase=" + encodeURIComponent(state.usecase));
-      return API_BASE + "/angles" + (params.length ? "?" + params.join("&") : "");
-    }
+    let endpoint = "";
+    if (state.level === "product") endpoint = "/products";
+    else if (state.level === "usecase") endpoint = "/usecases";
+    else if (state.level === "angle") endpoint = "/angles";
+
+    const params = [];
+    state.filters.forEach(f => {
+      params.push(f.type + "=" + encodeURIComponent(f.value));
+    });
+
+    return API_BASE + endpoint + (params.length ? "?" + params.join("&") : "");
   }
 
   async function loadLevel() {
@@ -292,9 +307,8 @@ function handleSearchSelect(value) {
     tabs.forEach(btn => {
       btn.addEventListener("click", () => {
         state.level = btn.dataset.tab;
-        state.product = null;
-        state.usecase = null;
-        state.filters = [];
+        // Don't clear filters on tab switch per user request/implicit logic of "cross-filtering"
+        // But maybe clear specific drilldown state variables if needed
         loadLevel();
       });
     });
@@ -304,12 +318,11 @@ function handleSearchSelect(value) {
      INIT UNIVERSAL TABLE
      ============================================================ */
   const table = new UniversalTable(wrapper, (value) => {
+    // When clicking a row, we treat it as adding a filter and going deeper
     if (state.level === "product") {
-      state.product = value;
-      state.filters = [{ type: "product", value }];
+      state.filters.push({ type: "product", value });
       state.level = "usecase";
     } else if (state.level === "usecase") {
-      state.usecase = value;
       state.filters.push({ type: "usecase", value });
       state.level = "angle";
     }

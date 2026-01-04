@@ -32,6 +32,11 @@ export default async function handler(req, res) {
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
+  const { searchParams } = new URL(req.url, "http://localhost");
+  // Filters
+  const usecase = searchParams.get("usecase");
+  const angle = searchParams.get("angle");
+
   const baseUrl = "https://api.foresightiq.ai/";
   const member = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
   const url = new URL("api/advertising/product-combination", baseUrl);
@@ -48,11 +53,34 @@ export default async function handler(req, res) {
     const ads = Array.isArray(json?.data?.results) ? json.data.results : [];
 
     // -------------------------------------------
+    // FILTERING
+    // -------------------------------------------
+    let filtered = ads.slice();
+
+    if (usecase) {
+      filtered = filtered.filter(ad => {
+        let uc = [];
+        if (Array.isArray(ad.f_use_case)) uc = ad.f_use_case;
+        else if (typeof ad.f_use_case === "string") uc = [ad.f_use_case];
+        return uc.includes(usecase);
+      });
+    }
+
+    if (angle) {
+      filtered = filtered.filter(ad => {
+        let ang = [];
+        if (Array.isArray(ad.f_angles)) ang = ad.f_angles;
+        else if (typeof ad.f_angles === "string") ang = [ad.f_angles];
+        return ang.includes(angle);
+      });
+    }
+
+    // -------------------------------------------
     // GROUP BY PRODUCT
     // -------------------------------------------
     const map = {};
 
-    ads.forEach(ad => {
+    filtered.forEach(ad => {
       const product = ad.f_products || "Unknown";
 
       if (!map[product]) {
