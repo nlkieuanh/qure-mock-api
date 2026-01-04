@@ -17,7 +17,7 @@ export default function handler(req, res) {
     // Hide template item if exists
     if (dropdownItemTemplate) dropdownItemTemplate.style.display = "none";
 
-    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown";
+    const API_DRILLDOWN = "https://qure-mock-api.vercel.app/api/drilldown-data";
 
     const state = {
       level: "product",      // product | usecase | angle

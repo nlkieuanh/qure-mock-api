@@ -25,18 +25,7 @@ function getJson(url) {
   });
 }
 
-function matchSearch(ad, q) {
-  if (!q) return true;
-  const t = q.toLowerCase();
-  return (
-    String(ad?.title ?? "").toLowerCase().includes(t) ||
-    String(ad?.f_products ?? "").toLowerCase().includes(t) ||
-    String(ad?.f_use_case ?? "").toLowerCase().includes(t) ||
-    String(ad?.f_angles ?? "").toLowerCase().includes(t) ||
-    String(ad?.f_offers ?? "").toLowerCase().includes(t) ||
-    String(ad?.f_promotion ?? "").toLowerCase().includes(t)
-  );
-}
+
 
 function bump(map, value) {
   const v = String(value ?? "Unknown").trim() || "Unknown";
@@ -82,7 +71,7 @@ export default async function handler(req, res) {
   const ads = Array.isArray(json?.data?.results) ? json.data.results : [];
 
   const filtered = ads.filter((ad) => {
-    if (!matchSearch(ad, query)) return false;
+    // if (!matchSearch(ad, query)) return false; // Removed to trust API results
     if (product && String(ad?.f_products ?? "") !== product) return false;
     if (usecase && String(ad?.f_use_case ?? "") !== usecase) return false;
     if (platform && String(ad?.platform ?? "").toLowerCase() !== platform.toLowerCase()) return false;
@@ -91,8 +80,8 @@ export default async function handler(req, res) {
 
   const groupField =
     level === "product" ? "f_products" :
-    level === "usecase" ? "f_use_case" :
-    "f_angles";
+      level === "usecase" ? "f_use_case" :
+        "f_angles";
 
   const groups = new Map();
 
