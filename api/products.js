@@ -1,55 +1,56 @@
-import fs from "fs";
-import path from "path";
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
   try {
-    const filePath = path.join(process.cwd(), "data", "ads.json");
-    const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
-
+    // CORS
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    if (req.method === "OPTIONS") return res.status(200).end();
 
-    if (req.method === "OPTIONS") {
-      return res.status(200).end();
-    }
+    const { searchParams } = new URL(req.url, "http://localhost");
 
-    // -------------------------------------------
-    // GROUP BY PRODUCT
-    // -------------------------------------------
-    const map = {};
+    // Optional passthroughs (keep frontend compatible)
+    const platform = searchParams.get("platform") || "";
+    const queryFromClient = (searchParams.get("query") || "").trim();
 
-    ads.forEach(ad => {
-      const product = ad.f_products || "Unknown";
+    // ===== HARDCODE REAL API CONFIG =====
+    const BASE_URL = "https://api.foresightiq.ai/".replace(/\/?$/, "/");
+    const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
+    const DEFAULT_QUERY = "vs"; // change if needed
+    // ==================================
 
-      if (!map[product]) {
-        map[product] = {
-          name: product,
-          adsCount: 0,
-          spend: 0,
-          impressions: 0
-        };
-      }
+    const upstreamUrl = new URL("api/advertising/product-combination", BASE_URL);
+    upstreamUrl.searchParams.set("member", MEMBER);
+    upstreamUrl.searchParams.set("query", queryFromClient || DEFAULT_QUERY);
+    if (platform) upstreamUrl.searchParams.set("platform", platform);
 
-      map[product].adsCount += 1;
-      map[product].spend += Number(ad.spend) || 0;
-      map[product].impressions += Number(ad.impressions) || 0;
+    const resp = await fetch(upstreamUrl.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
     });
 
-    const rows = Object.values(map);
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      return res.status(resp.status).json({ error: "Upstream error", detail: text });
+    }
 
-    // -------------------------------------------
-    // UNIVERSAL FORMAT FOR DRILLDOWN TABLE UI
-    // -------------------------------------------
-    const response = {
-      columns: ["name", "adsCount", "spend", "impressions"],
-      rows: rows
-    };
+    const json = await resp.json();
+    const items = Array.isArray(json?.data?.results) ? json.data.results : [];
 
-    return res.status(200).json(response);
+    // Aggregate by f_products (keep old shape)
+    const map = {};
+    items.forEach((ad) => {
+      const product = String(ad?.f_products || "Unknown").trim() || "Unknown";
+      if (!map[product]) {
+        map[product] = { name: product, adsCount: 0, spend: 0, impressions: 0 };
+      }
+      map[product].adsCount += 1;
+      map[product].spend += Number(ad?.spend) || 0;
+      map[product].impressions += Number(ad?.impressions) || 0;
+    });
 
+    return res.status(200).json({ products: Object.values(map) });
   } catch (err) {
     console.error("API ERROR /api/products:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err?.message || "Server error" });
   }
 }
