@@ -29,13 +29,12 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  // Always 200 to prevent drilldown.js / init_card_block.js crash
-  const ok = (payload) => res.status(200).json(payload);
+  const debug = String(req.query?.debug ?? "") === "1";
 
   // ===== HARDCODE CONFIG =====
   const BASE_URL = "https://api.foresightiq.ai/".replace(/\/?$/, "/");
   const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
-  const DEFAULT_QUERY = "vs"; // you can change later if you want broader default
+  const DEFAULT_QUERY = "vs";
   // ===========================
 
   const platform = String(req.query?.platform ?? "").trim();
@@ -52,19 +51,16 @@ export default async function handler(req, res) {
     const { status, json, raw } = await getJson(upstreamUrl.toString());
 
     if (status < 200 || status >= 300) {
-      console.error("[/api/products] upstream error:", status, raw);
-      return ok({
+      return res.status(200).json({
         products: [],
         columns,
         rows: [],
-        error: "upstream_error",
-        status,
+        ...(debug ? { debug: { upstreamUrl: upstreamUrl.toString(), status, raw: raw?.slice?.(0, 500) } } : {}),
       });
     }
 
     const items = Array.isArray(json?.data?.results) ? json.data.results : [];
 
-    // Aggregate
     const map = new Map();
     for (const ad of items) {
       const name = String(ad?.f_products ?? "Unknown").trim() || "Unknown";
@@ -77,19 +73,18 @@ export default async function handler(req, res) {
 
     const products = Array.from(map.values());
 
-    // Return BOTH shapes, so both modules work
-    return ok({
+    return res.status(200).json({
       products,
       columns,
-      rows: products.map((p) => ({ ...p, timeseries: [] })), // safe for chart/table code
+      rows: products.map((p) => ({ ...p, timeseries: [] })),
+      ...(debug ? { debug: { upstreamUrl: upstreamUrl.toString(), status, count: products.length } } : {}),
     });
   } catch (err) {
-    console.error("[/api/products] handler error:", err);
-    return ok({
+    return res.status(200).json({
       products: [],
       columns,
       rows: [],
-      error: err?.message || "handler_error",
+      ...(debug ? { debug: { error: String(err?.message || err) } } : {}),
     });
   }
 }
