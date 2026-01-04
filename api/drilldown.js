@@ -1,393 +1,332 @@
 export default function handler(req, res) {
   const code = `
-  document.addEventListener("DOMContentLoaded", () => {
-    const card = document.querySelector(".card-block-wrap.product-combination-card");
-    if (!card) return;
+/* ============================================================
+   UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
+   Cleanest version — no legacy render code
+   Supports: dynamic table, sorting, drilldown levels
+   ============================================================ */
 
-    // --- Elements
-    const tabButtons = card.querySelectorAll(".drilldown-tab-button");
-    const searchInput = card.querySelector(".dd-search-input");
-    const dropdown = card.querySelector(".dd-search-dropdown");
-    const dropdownItemTemplate = card.querySelector(".dd-search-item");
-    const chipsContainer = card.querySelector(".dd-chips-container");
-    const tableRender = card.querySelector(".table-render");
+document.addEventListener("DOMContentLoaded", function () {
 
-    if (!tableRender) return;
+  const card = document.querySelector(".card-block-wrap.product-combination-card");
+  if (!card) return;
 
-    // Hide template
-    if (dropdownItemTemplate) dropdownItemTemplate.style.display = "none";
+  const wrapper = card.querySelector(".adv-channel-table-wrapper");
+  const chipContainer = card.querySelector(".dd-chips-container");
+  const searchInput = card.querySelector(".dd-search-input");
+  const searchDropdown = card.querySelector(".dd-search-dropdown");
 
-    // NEW: Pointing to the raw ads endpoint
-    const API_ADS = "https://qure-mock-api.vercel.app/api/ads";
 
-    const state = {
-      level: "product",      // product | usecase | angle
-      query: "",
-      product: null,
-      usecase: null,
-      angle: null,
-      
-      // Cache raw ads here to avoid refetching heavily
-      rawAds: [],
-      
-      debounceTimer: null,
-      suggestionTimer: null,
-    };
+  const API_BASE = "https://qure-mock-api.vercel.app/api";
 
-    // -------------------------------
-    // Utils
-    // -------------------------------
-    const escapeHtml = (s) =>
-      String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-
-    const setDropdownOpen = (open) => {
-      if (!dropdown) return;
-      dropdown.style.display = open ? "block" : "none";
-    };
-
-    const prettyDate = (iso) => {
-      const s = String(iso ?? "");
-      return s.length >= 10 ? s.slice(0, 10) : s;
-    };
-
-    async function fetchJson(url) {
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
-      if (!res.ok) return null;
-      return res.json().catch(() => null);
-    }
-    
-    // -------------------------------
-    // LOGIC: Aggregation (Moved from server)
-    // -------------------------------
-    function bump(map, value) {
-      const v = String(value ?? "Unknown").trim() || "Unknown";
-      map.set(v, (map.get(v) || 0) + 1);
+  /* ============================================================
+     UNIVERSAL TABLE MODULE
+     ============================================================ */
+  class UniversalTable {
+    constructor(root, onRowClick) {
+      this.root = root;
+      this.onRowClick = onRowClick;
+      this.data = { columns: [], rows: [] };
+      this.sort = { key: null, dir: null };
     }
 
-    function formatTop(map, topN = 5) {
-      const arr = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-      const top = arr.slice(0, topN).map(([k, c]) => \`\${k} (\${c})\`);
-      const rest = arr.length > topN ? \` + \${arr.length - topN} more\` : "";
-      return top.join(", ") + rest;
+    setData(data) {
+      this.data = data ?? { columns: [], rows: [] };
+      this.render();
     }
 
-    function processData(ads) {
-      // 1. Filter
-      const filtered = ads.filter(ad => {
-        // Strict filters
-        if (state.product && String(ad?.f_products ?? "") !== state.product) return false;
-        if (state.usecase && String(ad?.f_use_case ?? "") !== state.usecase) return false;
-        // Angle is not a strict filter for the table unless you want it to be. 
-        // For standard drilldown: Product -> Usecase -> Angle, we stop at Angle view.
-        return true;
+    render() {
+      const { columns, rows } = this.data;
+
+      let html = '<table class="adv-channel-table"><thead><tr>';
+      columns.forEach(col => {
+        html += \`<th data-col="\${col}">\${this.pretty(col)}</th>\`;
+      });
+      html += '</tr></thead><tbody>';
+
+      rows.forEach(row => {
+        html += \`<tr class="dd-row" data-value="\${row[columns[0]]}">\`;
+        columns.forEach(col => {
+          html += \`<td>\${this.format(row[col])}</td>\`;
+        });
+        html += '</tr>';
       });
 
-      // 2. Group
-      const groupField = 
-        state.level === "product" ? "f_products" :
-        state.level === "usecase" ? "f_use_case" :
-        "f_angles";
+      html += '</tbody></table>';
+      this.root.innerHTML = html;
 
-      const groups = new Map();
+      this.attachSortEvents();
+      this.attachRowEvents();
+    }
 
-      for (const ad of filtered) {
-        const name = String(ad?.[groupField] ?? "Unknown").trim() || "Unknown";
-        if (!groups.has(name)) {
-          groups.set(name, {
-            name,
-            adsCount: 0,
-            usecasesMap: new Map(),
-            anglesMap: new Map(),
-            offersMap: new Map(),
-            promotionsMap: new Map(),
-            tsMap: new Map(),
-          });
-        }
+    attachSortEvents() {
+      const ths = this.root.querySelectorAll("th");
+      ths.forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.col;
+          this.updateSort(key);
+          this.sortRows();
+          this.render();
+        });
+      });
+    }
 
-        const g = groups.get(name);
-        g.adsCount += 1;
-
-        bump(g.usecasesMap, ad?.f_use_case);
-        bump(g.anglesMap, ad?.f_angles);
-        bump(g.offersMap, ad?.f_offers);
-        bump(g.promotionsMap, ad?.f_promotion);
-
-        const date = String(ad?.start_date ?? "").slice(0, 10);
-        if (date) g.tsMap.set(date, (g.tsMap.get(date) || 0) + 1);
+    updateSort(key) {
+      if (this.sort.key !== key) {
+        this.sort = { key, dir: "asc" };
+      } else {
+        this.sort.dir = this.sort.dir === "asc" ? "desc" : "asc";
       }
-
-      // 3. Format Rows
-      const rows = Array.from(groups.values()).map(g => ({
-        name: g.name,
-        adsCount: g.adsCount,
-        usecases: formatTop(g.usecasesMap),
-        angles: formatTop(g.anglesMap),
-        offers: formatTop(g.offersMap),
-        promotions: formatTop(g.promotionsMap),
-        timeseries: Array.from(g.tsMap.entries())
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([date, adsCount]) => ({ date, adsCount })),
-      }));
-      
-      // Sort rows by adsCount desc
-      rows.sort((a, b) => b.adsCount - a.adsCount);
-
-      return {
-        columns: ["name", "adsCount", "usecases", "angles", "offers", "promotions"],
-        rows
-      };
     }
 
-    // -------------------------------
-    // Data Loading
-    // -------------------------------
-    async function fetchRawAds(query) {
-      // Build URL to /api/ads
-      // We pass the search query to the API so it filters broad matches vs DB
-      const u = new URL(API_ADS);
-      if (query) u.searchParams.set("query", query);
-      // We do NOT pass product/usecase params to /api/ads because that endpoint returns a flat list 
-      // matching the *search text*. We do the structural filtering in JS (processData).
-      
-      const json = await fetchJson(u.toString());
-      return Array.isArray(json) ? json : [];
-    }
+    sortRows() {
+      const { key, dir } = this.sort;
+      if (!key) return;
 
-    async function loadTable() {
-      renderChips();
-
-      // OPTIMIZATION: Only fetch if query changed or rawAds is empty? 
-      // For now, simple approach: fetch fresh on every major action ensures consistency
-      // But to avoid flickering on tab switch, we could check state. 
-      // Let's fetch fresh to be safe.
-      
-      const ads = await fetchRawAds(state.query);
-      state.rawAds = ads; // Store for other potential uses
-      
-      const { columns, rows } = processData(ads);
-      renderTable(columns, rows);
-    }
-
-    // -------------------------------
-    // UI: Tabs
-    // -------------------------------
-    function updateTabs() {
-      tabButtons.forEach((btn) => {
-        btn.classList.toggle("is-current", btn.dataset.tab === state.level);
+      this.data.rows.sort((a, b) => {
+        const A = a[key] ?? 0;
+        const B = b[key] ?? 0;
+        return dir === "asc" ? A - B : B - A;
       });
     }
 
-    function attachTabHandlers() {
-      tabButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const lvl = btn.dataset.tab;
-          if (!lvl) return;
-          state.level = lvl;
-          updateTabs();
-          
-          // Re-process data without re-fetching if we want to be fast, 
-          // but fetching ensures we don't have stale cached data if logic changes.
-          // Let's re-run load so it feels standard.
-          loadTable();
+    attachRowEvents() {
+      if (!this.onRowClick) return;
+      const rows = this.root.querySelectorAll(".dd-row");
+      rows.forEach(row => {
+        row.addEventListener("click", () => {
+          this.onRowClick(row.dataset.value);
         });
       });
     }
 
-    // -------------------------------
-    // UI: Chips
-    // -------------------------------
-    function renderChips() {
-      if (!chipsContainer) return;
-      chipsContainer.innerHTML = "";
-
-      const chips = [];
-      if (state.query) chips.push({ type: "Search", value: state.query, key: "query" });
-      if (state.product) chips.push({ type: "Product", value: state.product, key: "product" });
-      if (state.usecase) chips.push({ type: "Usecase", value: state.usecase, key: "usecase" });
-
-      chips.forEach((c) => {
-        const chip = document.createElement("div");
-        chip.className = "dd-chip";
-        chip.innerHTML = \`
-          <span class="dd-chip-label">\${escapeHtml(c.type)}: \${escapeHtml(c.value)}</span>
-          <div class="dd-chip-remove" data-key="\${escapeHtml(c.key)}">✕</div>
-        \`;
-        chipsContainer.appendChild(chip);
-      });
-
-      chipsContainer.querySelectorAll(".dd-chip-remove").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const key = btn.dataset.key;
-          if (key === "query") {
-            state.query = "";
-            if (searchInput) searchInput.value = "";
-          }
-          if (key === "product") {
-            state.product = null;
-            state.usecase = null;
-          }
-          if (key === "usecase") {
-            state.usecase = null;
-          }
-          loadTable();
-        });
-      });
+    pretty(key) {
+      return key.replace(/([A-Z])/g, " $1").replace(/^\w/, c => c.toUpperCase());
     }
 
-    // -------------------------------
-    // Render table
-    // -------------------------------
-    function renderTable(columns, rows) {
-      if (!tableRender) return;
-
-      const cols = Array.isArray(columns) ? columns : [];
-      const data = Array.isArray(rows) ? rows : [];
-
-      let html = \`
-        <div class="adv-channel-table-wrapper">
-          <table class="adv-channel-table">
-            <thead>
-              <tr>\${cols.map(c => \`<th>\${escapeHtml(c)}</th>\`).join("")}</tr>
-            </thead>
-            <tbody>
-      \`;
-
-      data.forEach((r) => {
-        html += "<tr data-name=\\"" + escapeHtml(r?.name ?? "") + "\\">";
-        cols.forEach((c) => {
-          let v = r?.[c];
-          if (c === "timeseries") {
-             // Basic sparkline placeholder or just length
-             v = (Array.isArray(v) ? v.length : 0) + " days active"; 
-          }
-          html += "<td>" + escapeHtml(v ?? "") + "</td>";
-        });
-        html += "</tr>";
-      });
-
-      html += "</tbody></table></div>";
-      tableRender.innerHTML = html;
-
-      // Drilldown logic
-      const trs = tableRender.querySelectorAll("tbody tr");
-      trs.forEach((tr) => {
-        tr.addEventListener("click", () => {
-          const name = tr.getAttribute("data-name") || "";
-          if (!name) return;
-
-          if (state.level === "product") {
-            state.product = name;
-            state.usecase = null;
-            state.level = "usecase";
-          } else if (state.level === "usecase") {
-            state.usecase = name;
-            state.level = "angle";
-          } else {
-             // End of drilldown
-             state.angle = name;
-          }
-          updateTabs();
-          loadTable();
-        });
-      });
+    format(v) {
+      if (typeof v === "number") return v.toLocaleString();
+      return v ?? "";
     }
+  }
 
-    // -------------------------------
-    // Suggestions
-    // -------------------------------
-    async function loadSuggestions() {
-      if (!dropdown || !searchInput) return;
-      const q = String(searchInput.value ?? "").trim();
-      if (!q) {
-        setDropdownOpen(false);
-        return;
-      }
-      
-      // For suggestions, we can fetch from API or just use local filtering if we already had data.
-      // Simpler to just re-fetch light or use cached. 
-      // Ideally, the API would have a suggestion endpoint, but we can reuse /api/ads with query.
-      
-      const ads = await fetchRawAds(q);
-      // Unique names relevant to current level? Or just unique products?
-      // User request implies "search" -> finds products.
-      // Let's suggest unique 'names' based on current level (like existing logic).
-      
-      const groupField = 
-        state.level === "product" ? "f_products" :
-        state.level === "usecase" ? "f_use_case" :
-        "f_angles";
+  /* ============================================================
+     DRILLDOWN STATE
+     ============================================================ */
+  const state = {
+    level: "product",
+    product: null,
+    usecase: null,
+    filters: []
+  };
+  /* ============================================================
+   SEARCH BAR (LEVEL-BASED)
+   ============================================================ */
 
-      const uniqueNames = new Set();
-      ads.forEach(ad => {
-         const val = ad?.[groupField];
-         if (val) uniqueNames.add(val);
-      });
-      
-      const suggestions = Array.from(uniqueNames).slice(0, 10);
+function initSearch() {
+  if (!searchInput || !searchDropdown) return;
 
-      dropdown.innerHTML = "";
-      if (dropdownItemTemplate) dropdown.appendChild(dropdownItemTemplate);
-
-      suggestions.forEach((name) => {
-        const item = dropdownItemTemplate
-          ? dropdownItemTemplate.cloneNode(true)
-          : document.createElement("div");
-
-        item.style.display = "block";
-        item.classList.add("is-suggestion");
-        item.textContent = name;
-        item.dataset.value = name;
-
-        item.addEventListener("click", () => {
-          state.query = name; 
-          if (searchInput) searchInput.value = state.query;
-          setDropdownOpen(false);
-          loadTable();
-        });
-        dropdown.appendChild(item);
-      });
-
-      setDropdownOpen(true);
+  searchInput.addEventListener("input", (e) => {
+    const term = e.target.value.trim().toLowerCase();
+    if (!term) {
+      hideSearchDropdown();
+      return;
     }
-
-    function attachSearchHandlers() {
-      if (!searchInput) return;
-
-      searchInput.addEventListener("input", () => {
-        clearTimeout(state.debounceTimer);
-        clearTimeout(state.suggestionTimer);
-
-        state.suggestionTimer = setTimeout(loadSuggestions, 250);
-        state.debounceTimer = setTimeout(() => {
-          state.query = String(searchInput.value ?? "").trim();
-          loadTable();
-        }, 450);
-      });
-
-      searchInput.addEventListener("focus", () => {
-        if (searchInput.value) loadSuggestions();
-      });
-
-      document.addEventListener("click", (e) => {
-        if (!dropdown) return;
-        if (!card.contains(e.target)) setDropdownOpen(false);
-      });
-    }
-
-    // -------------------------------
-    // Init
-    // -------------------------------
-    const current = Array.from(tabButtons).find((b) => b.classList.contains("is-current"));
-    if (current?.dataset?.tab) state.level = current.dataset.tab;
-
-    updateTabs();
-    attachTabHandlers();
-    attachSearchHandlers();
-    loadTable();
+    const suggestions = buildSuggestions(term);
+    renderSearchDropdown(suggestions);
   });
+
+  document.addEventListener("click", (evt) => {
+    if (!card.contains(evt.target)) {
+      hideSearchDropdown();
+    }
+  });
+}
+
+function buildSuggestions(term) {
+  const data = table?.data ?? { columns: [], rows: [] };
+  const cols = data.columns ?? [];
+  const rows = data.rows ?? [];
+  if (!cols.length || !rows.length) return [];
+
+  const nameKey = cols[0]; 
+  return rows
+    .filter(row => String(row[nameKey] ?? "").toLowerCase().includes(term))
+    .slice(0, 10)
+    .map(row => ({
+      value: row[nameKey],
+      type: state.level
+    }));
+}
+
+function renderSearchDropdown(list) {
+  if (!list.length) {
+    searchDropdown.innerHTML = '<div class="dd-search-item">No results</div>';
+    searchDropdown.classList.remove("is-hidden");
+    return;
+  }
+
+  searchDropdown.innerHTML = list.map(function(item) {
+    return '<div class="dd-search-item" data-value="' + item.value + '">' +
+             '<strong>' + item.type + '</strong>&nbsp;' + item.value +
+           '</div>';
+  }).join("");
+
+  searchDropdown.classList.remove("is-hidden");
+
+  searchDropdown.querySelectorAll(".dd-search-item").forEach(function(el) {
+    el.addEventListener("click", function() {
+      handleSearchSelect(el.dataset.value);
+    });
+  });
+}
+
+
+function hideSearchDropdown() {
+  if (!searchDropdown) return;
+  searchDropdown.classList.add("is-hidden");
+  searchDropdown.innerHTML = "";
+}
+
+function handleSearchSelect(value) {
+  // Clear input & dropdown
+  searchInput.value = "";
+  hideSearchDropdown();
+
+  if (state.level === "product") {
+    state.product = value;
+    state.filters = [{ type: "product", value }];
+    state.level = "usecase";
+  } else if (state.level === "usecase") {
+    state.usecase = value;
+    const hasProductChip = state.filters.some(f => f.type === "product");
+    if (!hasProductChip && state.product) {
+      state.filters.unshift({ type: "product", value: state.product });
+    }
+    const hasUsecaseChip = state.filters.some(f => f.type === "usecase" && f.value === value);
+    if (!hasUsecaseChip) {
+      state.filters.push({ type: "usecase", value });
+    }
+    state.level = "angle";
+  } else if (state.level === "angle") {
+  
+    const hasAngleChip = state.filters.some(f => f.type === "angle" && f.value === value);
+    if (!hasAngleChip) {
+      state.filters.push({ type: "angle", value });
+    }
+
+  }
+
+  loadLevel();
+}
+
+  /* ============================================================
+     CHIP UI
+     ============================================================ */
+  function renderChips() {
+    chipContainer.innerHTML = "";
+    state.filters.forEach((f, idx) => {
+      const chip = document.createElement("div");
+      chip.className = "dd-chip";
+      chip.innerHTML = \`
+        <span class="dd-chip-label">\${f.type}: \${f.value}</span>
+        <div class="dd-chip-remove">✕</div>
+      \`;
+      chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
+        state.filters.splice(idx, 1);
+        syncStateFromChips();
+        loadLevel();
+      });
+      chipContainer.appendChild(chip);
+    });
+  }
+
+  function syncStateFromChips() {
+    state.product = null;
+    state.usecase = null;
+    state.filters.forEach(f => {
+      if (f.type === "product") state.product = f.value;
+      if (f.type === "usecase") state.usecase = f.value;
+    });
+  }
+
+  /* ============================================================
+     UNIVERSAL FETCHER
+     ============================================================ */
+  function buildApiUrl() {
+    if (state.level === "product") return API_BASE + "/products";
+    if (state.level === "usecase") {
+      let url = API_BASE + "/usecases";
+      if (state.product) url += "?product=" + encodeURIComponent(state.product);
+      return url;
+    }
+    if (state.level === "angle") {
+      const params = [];
+      if (state.product) params.push("product=" + encodeURIComponent(state.product));
+      if (state.usecase) params.push("usecase=" + encodeURIComponent(state.usecase));
+      return API_BASE + "/angles" + (params.length ? "?" + params.join("&") : "");
+    }
+  }
+
+  async function loadLevel() {
+    const url = buildApiUrl();
+    const res = await fetch(url);
+    const json = await res.json();
+    table.setData(json);
+    updateTabs();
+    renderChips();
+  }
+
+  /* ============================================================
+     TAB HANDLERS
+     ============================================================ */
+  function updateTabs() {
+    const tabs = card.querySelectorAll(".drilldown-tab-button");
+    tabs.forEach(btn => {
+      btn.classList.toggle("is-current", btn.dataset.tab === state.level);
+    });
+  }
+
+  function attachTabEvents() {
+    const tabs = card.querySelectorAll(".drilldown-tab-button");
+    tabs.forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.level = btn.dataset.tab;
+        state.product = null;
+        state.usecase = null;
+        state.filters = [];
+        loadLevel();
+      });
+    });
+  }
+
+  /* ============================================================
+     INIT UNIVERSAL TABLE
+     ============================================================ */
+  const table = new UniversalTable(wrapper, (value) => {
+    if (state.level === "product") {
+      state.product = value;
+      state.filters = [{ type: "product", value }];
+      state.level = "usecase";
+    } else if (state.level === "usecase") {
+      state.usecase = value;
+      state.filters.push({ type: "usecase", value });
+      state.level = "angle";
+    }
+    loadLevel();
+  });
+
+  /* ============================================================
+     INIT
+     ============================================================ */
+  attachTabEvents();
+  initSearch();
+  loadLevel();
+  renderChips();
+
+});
   `;
 
-  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  return res.status(200).send(code);
+  res.setHeader("Content-Type", "text/javascript");
+  res.status(200).send(code);
 }
