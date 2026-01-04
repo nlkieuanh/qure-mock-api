@@ -37,8 +37,10 @@ export default async function handler(req, res) {
   const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
   const DEFAULT_QUERY = "vs";
 
-  const platform = String(req.query?.platform ?? "").trim();
-  const query = String(req.query?.query ?? "").trim();
+  const { searchParams } = new URL(req.url, "http://localhost");
+
+  const platform = String(searchParams.get("platform") || "").trim();
+  const query = String(searchParams.get("query") || "").trim();
 
   const columns = ["name", "adsCount", "spend", "impressions"];
 

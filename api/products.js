@@ -33,8 +33,9 @@ export default async function handler(req, res) {
 
   const BASE_URL = "https://api.foresightiq.ai/";
   const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
-  const QUERY = req.query?.query || "vs";
-  const platform = req.query?.platform || "";
+  const { searchParams } = new URL(req.url, "http://localhost");
+  const QUERY = searchParams.get("query") || "vs";
+  const platform = searchParams.get("platform") || "";
 
   const columns = ["name", "adsCount", "spend", "impressions"];
 
