@@ -18,7 +18,7 @@ function getJson(url) {
         });
       }
     );
-    req.on("error", () => resolve({ status: 0, json: null, raw: "" }));
+    req.on("error", (err) => resolve({ status: 0, json: null, raw: String(err?.message || "") }));
     req.end();
   });
 }
@@ -29,37 +29,42 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
 
+  // Always 200 to prevent drilldown.js / init_card_block.js crash
+  const ok = (payload) => res.status(200).json(payload);
+
+  // ===== HARDCODE CONFIG =====
   const BASE_URL = "https://api.foresightiq.ai/".replace(/\/?$/, "/");
   const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
-  const DEFAULT_QUERY = "vs";
+  const DEFAULT_QUERY = "vs"; // you can change later if you want broader default
+  // ===========================
 
   const platform = String(req.query?.platform ?? "").trim();
   const query = String(req.query?.query ?? "").trim();
 
-  // detect consumer:
-  // - init_card_block: expects { columns, rows }
-  // - drilldown.js: expects { products }
-  const wantsTableShape = !("mode" in (req.query || {})) && (platform || req.query?.start || req.query?.end);
+  const columns = ["name", "adsCount", "spend", "impressions"];
 
   try {
-    const upstream = new URL("api/advertising/product-combination", BASE_URL);
-    upstream.searchParams.set("member", MEMBER);
-    upstream.searchParams.set("query", query || DEFAULT_QUERY);
-    if (platform) upstream.searchParams.set("platform", platform);
+    const upstreamUrl = new URL("api/advertising/product-combination", BASE_URL);
+    upstreamUrl.searchParams.set("member", MEMBER);
+    upstreamUrl.searchParams.set("query", query || DEFAULT_QUERY);
+    if (platform) upstreamUrl.searchParams.set("platform", platform);
 
-    const { status, json, raw } = await getJson(upstream.toString());
+    const { status, json, raw } = await getJson(upstreamUrl.toString());
+
     if (status < 200 || status >= 300) {
       console.error("[/api/products] upstream error:", status, raw);
-      return res.status(200).json(
-        wantsTableShape
-          ? { columns: ["name", "adsCount", "spend", "impressions"], rows: [] }
-          : { products: [] }
-      );
+      return ok({
+        products: [],
+        columns,
+        rows: [],
+        error: "upstream_error",
+        status,
+      });
     }
 
     const items = Array.isArray(json?.data?.results) ? json.data.results : [];
 
-    // aggregate by f_products
+    // Aggregate
     const map = new Map();
     for (const ad of items) {
       const name = String(ad?.f_products ?? "Unknown").trim() || "Unknown";
@@ -70,23 +75,21 @@ export default async function handler(req, res) {
       row.impressions += Number(ad?.impressions) || 0;
     }
 
-    const list = Array.from(map.values());
+    const products = Array.from(map.values());
 
-    // Return shape based on consumer
-    if (wantsTableShape) {
-      return res.status(200).json({
-        columns: ["name", "adsCount", "spend", "impressions"],
-        rows: list.map((r) => ({ ...r, timeseries: [] })), // keep timeseries key for safety
-      });
-    }
-
-    return res.status(200).json({ products: list });
+    // Return BOTH shapes, so both modules work
+    return ok({
+      products,
+      columns,
+      rows: products.map((p) => ({ ...p, timeseries: [] })), // safe for chart/table code
+    });
   } catch (err) {
     console.error("[/api/products] handler error:", err);
-    return res.status(200).json(
-      wantsTableShape
-        ? { columns: ["name", "adsCount", "spend", "impressions"], rows: [] }
-        : { products: [] }
-    );
+    return ok({
+      products: [],
+      columns,
+      rows: [],
+      error: err?.message || "handler_error",
+    });
   }
 }
