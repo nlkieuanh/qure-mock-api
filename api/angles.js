@@ -25,6 +25,24 @@ function getJson(url) {
   });
 }
 
+function getTopDist(ads, keyField) {
+  const counts = {};
+  ads.forEach(ad => {
+    const items = Array.isArray(ad[keyField]) ? ad[keyField] : [ad[keyField]];
+    items.forEach(i => {
+      const val = (i || "Unknown").trim();
+      if (!val) return;
+      counts[val] = (counts[val] || 0) + 1;
+    });
+  });
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1]) // Sort by count desc
+    .slice(0, 5) // Top 5
+    .map(([k, v]) => `${k} (${v})`)
+    .join(", ");
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
@@ -106,7 +124,8 @@ export default async function handler(req, res) {
             revenue: 0,
             impressions: 0,
             clicks: 0,
-            timeseries: {}
+            timeseries: {},
+            rawAds: []
           };
         }
 
@@ -116,6 +135,7 @@ export default async function handler(req, res) {
         g.revenue += Number(ad.revenue) || 0;
         g.impressions += Number(ad.impressions) || 0;
         g.clicks += Number(ad.clicks) || 0;
+        g.rawAds.push(ad);
 
         /* ---- Timeseries ---- */
         const date = ad.start_date || ad.date || null;
@@ -149,11 +169,12 @@ export default async function handler(req, res) {
       return {
         name: g.name,
         adsCount: g.adsCount,
-        spend: g.spend,
-        revenue: g.revenue,
-        revPerAd: g.adsCount > 0 ? g.revenue / g.adsCount : 0,
-        roas: g.spend > 0 ? g.revenue / g.spend : 0,
-        ctr: g.impressions > 0 ? g.clicks / g.impressions : 0,
+        usecases: getTopDist(g.rawAds, "f_use_case"),
+        angles: getTopDist(g.rawAds, "f_angles"),
+        // Retain other metrics logic just in case, but response columns will dictate display
+        // revPerAd: g.adsCount > 0 ? g.revenue / g.adsCount : 0,
+        // roas: g.spend > 0 ? g.revenue / g.spend : 0,
+        // ctr: g.impressions > 0 ? g.clicks / g.impressions : 0,
         timeseries: ts
       };
     });
@@ -162,11 +183,8 @@ export default async function handler(req, res) {
       columns: [
         "name",
         "adsCount",
-        "spend",
-        "revenue",
-        "revPerAd",
-        "roas",
-        "ctr"
+        "usecases",
+        "angles"
       ],
       rows
     });

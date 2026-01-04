@@ -25,6 +25,24 @@ function getJson(url) {
   });
 }
 
+function getTopDist(ads, keyField) {
+  const counts = {};
+  ads.forEach(ad => {
+    const items = Array.isArray(ad[keyField]) ? ad[keyField] : [ad[keyField]];
+    items.forEach(i => {
+      const val = (i || "Unknown").trim();
+      if (!val) return;
+      counts[val] = (counts[val] || 0) + 1;
+    });
+  });
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1]) // Sort by count desc
+    .slice(0, 5) // Top 5
+    .map(([k, v]) => `${k} (${v})`)
+    .join(", ");
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
@@ -83,21 +101,24 @@ export default async function handler(req, res) {
           map[name] = {
             name,
             adsCount: 0,
-            spend: 0,
-            impressions: 0,
+            rawAds: []
           };
         }
 
         map[name].adsCount += 1;
-        map[name].spend += Number(ad.spend) || 0;
-        map[name].impressions += Number(ad.impressions) || 0;
+        map[name].rawAds.push(ad);
       });
     });
 
-    const rows = Object.values(map);
+    const rows = Object.values(map).map(u => ({
+      name: u.name,
+      adsCount: u.adsCount,
+      usecases: getTopDist(u.rawAds, "f_use_case"),
+      angles: getTopDist(u.rawAds, "f_angles")
+    }));
 
     return res.status(200).json({
-      columns: ["name", "adsCount", "spend", "impressions"],
+      columns: ["name", "adsCount", "usecases", "angles"],
       rows
     });
 
