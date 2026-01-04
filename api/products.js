@@ -1,10 +1,12 @@
 import https from "https";
 
+const insecureAgent = new https.Agent({ rejectUnauthorized: false });
+
 function getJson(url) {
   return new Promise((resolve) => {
     const req = https.request(
       url,
-      { method: "GET", headers: { Accept: "application/json" } },
+      { method: "GET", headers: { Accept: "application/json" }, agent: insecureAgent },
       (res) => {
         let data = "";
         res.on("data", (c) => (data += c));
@@ -26,50 +28,31 @@ function getJson(url) {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const debug = String(req.query?.debug ?? "") === "1";
-
-  // ===== HARDCODE CONFIG =====
-  const BASE_URL = "https://api.foresightiq.ai/".replace(/\/?$/, "/");
+  const BASE_URL = "https://api.foresightiq.ai/";
   const MEMBER = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
-  const DEFAULT_QUERY = "vs";
-  // ===========================
-
-  const platform = String(req.query?.platform ?? "").trim();
-  const query = String(req.query?.query ?? "").trim();
+  const QUERY = req.query?.query || "vs";
+  const platform = req.query?.platform || "";
 
   const columns = ["name", "adsCount", "spend", "impressions"];
 
   try {
-    const upstreamUrl = new URL("api/advertising/product-combination", BASE_URL);
-    upstreamUrl.searchParams.set("member", MEMBER);
-    upstreamUrl.searchParams.set("query", query || DEFAULT_QUERY);
-    if (platform) upstreamUrl.searchParams.set("platform", platform);
+    const url = new URL("api/advertising/product-combination", BASE_URL);
+    url.searchParams.set("member", MEMBER);
+    url.searchParams.set("query", QUERY);
+    if (platform) url.searchParams.set("platform", platform);
 
-    const { status, json, raw } = await getJson(upstreamUrl.toString());
-
-    if (status < 200 || status >= 300) {
-      return res.status(200).json({
-        products: [],
-        columns,
-        rows: [],
-        ...(debug ? { debug: { upstreamUrl: upstreamUrl.toString(), status, raw: raw?.slice?.(0, 500) } } : {}),
-      });
-    }
-
-    const items = Array.isArray(json?.data?.results) ? json.data.results : [];
+    const { status, json } = await getJson(url.toString());
+    const results = status === 200 ? json?.data?.results || [] : [];
 
     const map = new Map();
-    for (const ad of items) {
-      const name = String(ad?.f_products ?? "Unknown").trim() || "Unknown";
+    results.forEach((ad) => {
+      const name = ad?.f_products || "Unknown";
       if (!map.has(name)) map.set(name, { name, adsCount: 0, spend: 0, impressions: 0 });
-      const row = map.get(name);
-      row.adsCount += 1;
-      row.spend += Number(ad?.spend) || 0;
-      row.impressions += Number(ad?.impressions) || 0;
-    }
+      map.get(name).adsCount += 1;
+    });
 
     const products = Array.from(map.values());
 
@@ -77,14 +60,8 @@ export default async function handler(req, res) {
       products,
       columns,
       rows: products.map((p) => ({ ...p, timeseries: [] })),
-      ...(debug ? { debug: { upstreamUrl: upstreamUrl.toString(), status, count: products.length } } : {}),
     });
-  } catch (err) {
-    return res.status(200).json({
-      products: [],
-      columns,
-      rows: [],
-      ...(debug ? { debug: { error: String(err?.message || err) } } : {}),
-    });
+  } catch {
+    return res.status(200).json({ products: [], columns, rows: [] });
   }
 }
