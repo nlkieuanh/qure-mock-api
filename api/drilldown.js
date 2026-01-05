@@ -195,24 +195,32 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function buildGlobalSuggestions(ads, term) {
-    const products = new Set();
-    const usecases = new Set();
-    const angles = new Set();
+    const hits = new Map(); // Use Map to dedup by "value|type" key
+
+    // Define fields to ignore (metrics, IDs, internal fields)
+    const ignoredFields = new Set(["_id", "adsCount", "impressions", "spend", "ctr", "cpc", "roas", "date"]);
 
     ads.forEach(ad => {
-      if (String(ad.f_products || "").toLowerCase().includes(term)) products.add(ad.f_products);
-      const ucs = Array.isArray(ad.f_use_case) ? ad.f_use_case : [ad.f_use_case];
-      ucs.forEach(u => { if (String(u || "").toLowerCase().includes(term)) usecases.add(u); });
-      const ang = Array.isArray(ad.f_angles) ? ad.f_angles : [ad.f_angles];
-      ang.forEach(a => { if (String(a || "").toLowerCase().includes(term)) angles.add(a); });
+       Object.keys(ad).forEach(key => {
+          if (ignoredFields.has(key)) return;
+          
+          let values = [];
+          if (Array.isArray(ad[key])) values = ad[key];
+          else if (ad[key]) values = [ad[key]];
+          
+          values.forEach(val => {
+             const strVal = String(val);
+             if (strVal.toLowerCase().includes(term)) {
+                const uniqueKey = strVal + "|" + key;
+                if (!hits.has(uniqueKey)) {
+                   hits.set(uniqueKey, { value: strVal, type: key });
+                }
+             }
+          });
+       });
     });
 
-    const list = [];
-    products.forEach(v => list.push({ value: v, type: "f_products" }));
-    usecases.forEach(v => list.push({ value: v, type: "f_use_case" }));
-    angles.forEach(v => list.push({ value: v, type: "f_angles" }));
-
-    return list.slice(0, 15);
+    return Array.from(hits.values()).slice(0, 15);
   }
 
   function renderSearchDropdown(list) {
@@ -223,11 +231,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     searchDropdown.innerHTML = list.map(item => {
-      const label = item.type === "f_products" ? "Product" : 
-                    item.type === "f_use_case" ? "Use Case" : "Angle";
+      // Reuse the pretty function from table if possible, or duplicate logic
+      const label = table.pretty(item.type);
                     
       return \`<div class="dd-search-item" data-value="\${item.value}" data-type="\${item.type}">
-                <strong>\${label}</strong>&nbsp;\${item.value}
+                <strong>\${label}</strong>: \${item.value}
               </div>\`;
     }).join("");
 
