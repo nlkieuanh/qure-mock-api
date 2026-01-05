@@ -131,7 +131,13 @@ document.addEventListener("DOMContentLoaded", function () {
         "f_products": "Product",
         "f_use_case": "Use Case",
         "f_angles": "Angle",
-        "adsCount": "Ads Count"
+        "adsCount": "Ads Count",
+        "f_offers": "Offer",
+        "platform": "Platform",
+        "f_insights.cta_type": "CTA Type",
+        "f_insights.hook_type": "Hook Type",
+        "f_insights.visual_style": "Visual Style",
+        "f_insights.trigger_type": "Trigger Type"
       };
       if (map[key]) return map[key];
 
