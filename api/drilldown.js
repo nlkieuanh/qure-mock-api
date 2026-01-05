@@ -369,27 +369,77 @@ document.addEventListener("DOMContentLoaded", function () {
     if (dd) dd.classList.add("is-hidden");
   }
 
+ 
   /* ============================================================
-     DYNAMIC TABS
+     DYNAMIC TABS (DRAG & DROP)
      ============================================================ */
   function renderTabs() {
     if (!tabContainer) return;
-    
-    // Clear tabs but we need to preserve the selector if it was appended? 
-    // Actually renderTabs rebuilds everything, including calling renderFieldSelector at the end.
-    tabContainer.innerHTML = ""; 
 
-    state.tabs.forEach((tab) => {
+    tabContainer.innerHTML = "";
+    
+    // Note: We need a unique ID for dragging if labels are not unique, but here keys are unique.
+    
+    state.tabs.forEach((tab, index) => {
       const btn = document.createElement("a");
       btn.className = "drilldown-tab-button w-inline-block";
       if (tab.id === state.currentTabId) btn.classList.add("is-current");
       
-      btn.innerHTML = \`<div class="text-block-7">\${tab.label}</div>\`;
+      // Pointer events none on text to avoid dragging text selection issues
+      btn.innerHTML = \`<div class="text-block-7" style="pointer-events: none;">\${tab.label}</div>\`;
       
+      // Navigate on Click
       btn.addEventListener("click", () => {
         state.currentTabId = tab.id;
         renderTabs(); 
         loadLevel();
+      });
+
+      // DRAG & DROP EVENTS
+      btn.setAttribute("draggable", "true");
+      btn.dataset.index = index;
+
+      btn.addEventListener("dragstart", (e) => {
+        // We store the index of the item being dragged
+        e.dataTransfer.setData("text/plain", index);
+        e.dataTransfer.effectAllowed = "move";
+        btn.style.opacity = "0.5";
+      });
+
+      btn.addEventListener("dragend", () => {
+        btn.style.opacity = "1";
+        // Cleanup visual cues
+        document.querySelectorAll(".drilldown-tab-button").forEach(b => b.classList.remove("drag-over"));
+      });
+
+      btn.addEventListener("dragover", (e) => {
+        e.preventDefault(); // allow dropping
+        e.dataTransfer.dropEffect = "move";
+        btn.classList.add("drag-over");
+      });
+
+      btn.addEventListener("dragleave", () => {
+        btn.classList.remove("drag-over");
+      });
+
+      // Handle Drop
+      btn.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const fromIndex = parseInt(e.dataTransfer.getData("text/plain"), 10);
+        const toIndex = index;
+        
+        if (fromIndex !== toIndex) {
+          // Reorder state.tabs
+          const movedItem = state.tabs.splice(fromIndex, 1)[0];
+          state.tabs.splice(toIndex, 0, movedItem);
+          
+          // Re-render tabs to reflect new order
+          renderTabs();
+          
+          // We might need to reload data because column order (fields param) 
+          // depends on tab order in our logic.
+          loadLevel(); 
+        }
       });
 
       tabContainer.appendChild(btn);
