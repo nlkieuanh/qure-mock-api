@@ -2,7 +2,7 @@ export default function handler(req, res) {
   const code = `
 /* ============================================================
    UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
-   Refactored for Dynamic Tabs & Universal API
+   Refactored for Client-Side Aggregation (No /api/data dependency)
    ============================================================ */
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const tabContainer = card.querySelector(".drilldown-tab-filter-wrap");
 
   // API Configuration
-  const API_BASE = "https://qure-mock-api.vercel.app/api";
+  const API_ADS = "https://qure-mock-api.vercel.app/api/ads";
   
   // State
   const state = {
@@ -34,6 +34,131 @@ document.addEventListener("DOMContentLoaded", function () {
     // Active filters
     filters: []
   };
+
+  // Cache for raw ads to avoid repeated fetches
+  let _rawAdsCache = null;
+
+  /* ============================================================
+     HELPER FUNCTIONS (Ported from core.js)
+     ============================================================ */
+  
+  function resolveValue(obj, path) {
+    if (!path) return null;
+    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+  }
+
+  function getTopDist(ads, keyField) {
+    const counts = {};
+    ads.forEach(ad => {
+        const items = resolveValue(ad, keyField);
+        const list = Array.isArray(items) ? items : [items];
+        
+        list.forEach(i => {
+            const val = (i || "Unknown").trim();
+            if (!val) return;
+            counts[val] = (counts[val] || 0) + 1;
+        });
+    });
+
+    return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1]) // Sort by count desc
+        .slice(0, 5) // Top 5
+        .map(([k, v]) => \`\${k} <span style="color:#888; font-size:0.9em">(\${v})</span>\`)
+        .join("<br>");
+  }
+
+  function processAds(ads, { groupBy, filters = [], columns = [] } = {}) {
+    let filtered = ads;
+
+    // 1. Apply Filters
+    if (filters && filters.length) {
+         filters.forEach(f => {
+             filtered = filtered.filter(ad => {
+                 const actual = resolveValue(ad, f.type);
+                 if (Array.isArray(actual)) {
+                     // Check if any of the actual array items matches the filter value
+                     return actual.some(v => String(v) === String(f.value));
+                 }
+                 return String(actual) === String(f.value);
+             });
+         });
+    }
+
+    // 2. Grouping
+    const groups = {};
+    const hasGrouping = !!groupBy;
+    
+    filtered.forEach(ad => {
+        let groupKeys = ["Total"];
+        if (hasGrouping) {
+            const raw = resolveValue(ad, groupBy);
+            if (Array.isArray(raw)) groupKeys = raw;
+            else if (raw) groupKeys = [raw];
+            else groupKeys = ["Unknown"];
+        }
+
+        groupKeys.forEach(key => {
+            const k = typeof key === 'string' ? key.trim() : String(key);
+            if (!k) return;
+
+            if (!groups[k]) {
+                groups[k] = {
+                    name: k,
+                    adsCount: 0,
+                    spend: 0,
+                    revenue: 0,
+                    impressions: 0,
+                    clicks: 0,
+                    rawAds: []
+                };
+            }
+
+            const g = groups[k];
+            g.adsCount++;
+            g.spend += Number(ad.spend) || 0;
+            
+            // Revenue Handling (Windsor vs Standard)
+            if (ad.windsor && ad.windsor.action_values_omni_purchase) {
+                 g.revenue += Number(ad.windsor.action_values_omni_purchase);
+            } else {
+                 g.revenue += Number(ad.revenue) || 0;
+            }
+            
+            g.impressions += Number(ad.impressions) || 0;
+            g.clicks += Number(ad.clicks) || 0;
+            g.rawAds.push(ad);
+        });
+    });
+
+    // 3. Format & Calculate Metrics
+    const resultRows = Object.values(groups).map(g => {
+        const roas = g.spend > 0 ? g.revenue / g.spend : 0;
+        const ctr = g.impressions > 0 ? g.clicks / g.impressions : 0;
+        const cpc = g.clicks > 0 ? g.spend / g.clicks : 0;
+
+        const row = {
+            name: g.name,
+            adsCount: g.adsCount,
+            spend: g.spend,
+            revenue: g.revenue,
+            roas,
+            ctr,
+            cpc
+        };
+        
+        // Distribution Columns
+        if (columns.length > 0) {
+            columns.forEach(col => {
+                if (["name", "adsCount", "spend", "revenue", "roas", "ctr", "cpc"].includes(col)) return;
+                row[col] = getTopDist(g.rawAds, col);
+            });
+        }
+        
+        return row;
+    });
+
+    return resultRows;
+  }
 
   /* ============================================================
      UNIVERSAL TABLE MODULE
@@ -58,8 +183,8 @@ document.addEventListener("DOMContentLoaded", function () {
       let html = '<table class="adv-channel-table"><thead><tr>';
       columns.forEach(col => {
         let headerText = this.pretty(col);
-        // If this is the first column ("name"), use the current tab label
-        if (col === columns[0] && state.tabs.find(t => t.id === state.currentTabId)) {
+        // If this is the "name" column, use the current tab label
+        if (col === "name" && state.tabs.find(t => t.id === state.currentTabId)) {
           headerText = state.tabs.find(t => t.id === state.currentTabId).label;
         }
         
@@ -69,7 +194,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // 2. Build Rows
       rows.forEach(row => {
-        const keyVal = row[columns[0]]; 
+        const keyVal = row["name"]; 
         html += \`<tr class="dd-row" data-value="\${keyVal}">\`;
         columns.forEach(col => {
           html += \`<td>\${this.format(row[col])}</td>\`;
@@ -128,6 +253,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     pretty(key) {
       const map = {
+        "name": "Name", // Fallback, usually overwritten
         "f_products": "Product",
         "f_use_case": "Use Case",
         "f_angles": "Angle",
@@ -141,7 +267,6 @@ document.addEventListener("DOMContentLoaded", function () {
       };
       if (map[key]) return map[key];
 
-      // Clean up f_insights.trigger_type -> Trigger Type
       const clean = key.split('.').pop(); 
       return clean.replace(/([A-Z])/g, " $1")
                 .replace(/_/g, " ")
@@ -184,10 +309,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function performGlobalSearch(term) {
     try {
-      // Mock Search using raw ads
-      const res2 = await fetch("https://qure-mock-api.vercel.app/api/ads");
-      const ads = await res2.json();
-      const suggestions = buildGlobalSuggestions(ads, term);
+      // Use cached ads if available, else fetch
+      if (!_rawAdsCache) {
+           const res = await fetch(API_ADS);
+           _rawAdsCache = await res.json();
+      }
+      const suggestions = buildGlobalSuggestions(_rawAdsCache, term);
       renderSearchDropdown(suggestions);
     } catch (err) {
       console.error("Search error", err);
@@ -198,15 +325,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const hits = new Map(); // Dedup
     const activeKeys = state.tabs.map(t => t.id); // Only search checked fields
 
-    // Accessor helper for dot notation or direct key
-    const getVal = (obj, path) => {
-       if (obj[path] !== undefined) return obj[path];
-       return path.split('.').reduce((acc, part) => acc && acc[part], obj);
-    };
-
     ads.forEach(ad => {
        activeKeys.forEach(key => {
-          let raw = getVal(ad, key);
+          let raw = resolveValue(ad, key);
           if (raw === undefined || raw === null) return;
           
           let values = [];
@@ -237,9 +358,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     searchDropdown.innerHTML = list.map(item => {
-      // Reuse the pretty function from table if possible, or duplicate logic
       const label = table.pretty(item.type);
-                    
       return \`<div class="dd-search-item" data-value="\${item.value}" data-type="\${item.type}">
                 <strong>\${label}</strong>: \${item.value}
               </div>\`;
@@ -301,9 +420,8 @@ document.addEventListener("DOMContentLoaded", function () {
      FIELD SELECTOR (CHECKBOX DROPDOWN)
      ============================================================ */
   function renderFieldSelector() {
-    // 1. Find the Webflow dropdown component
     const dropdown = card.querySelector(".dd-add-field-select");
-    if (!dropdown) return; // If user hasn't created it yet, do nothing (or we could fallback)
+    if (!dropdown) return; 
 
     const toggle = dropdown.querySelector(".dd-add-field-toggle");
     const listWrap = dropdown.querySelector(".dd-add-field-list");
@@ -311,39 +429,28 @@ document.addEventListener("DOMContentLoaded", function () {
     
     if (!toggle || !listWrap) return;
 
-    // 2. Initial Render of Options
     renderFieldOptions(listInner);
 
-    // 3. Toggle Event
-    // Remove old listeners to avoid duplicates? Ideally this function runs once or we safeguard.
-    // We can assume renderFieldSelector is called frequently? No, renderTabs calls it.
-    // So we should prevent double-binding.
     if (dropdown.dataset.bound) return; 
     dropdown.dataset.bound = "true";
 
     toggle.addEventListener("click", (e) => {
       e.stopPropagation();
-      // Webflow interactions might handle display, but if we need manual control:
       const isHidden = getComputedStyle(listWrap).display === "none";
       if (isHidden) {
          listWrap.style.display = "block";
-         // Auto expand width
          listWrap.style.minWidth = "100%";
          listWrap.style.width = "max-content";
-         
-         // Align Right
-         listWrap.style.position = "absolute"; // Ensure absolute positioning
+         listWrap.style.position = "absolute"; 
          listWrap.style.right = "0";
          listWrap.style.left = "auto";
          
-         // Re-render to ensure checked state is fresh?
          renderFieldOptions(listInner); 
       } else {
          listWrap.style.display = "none";
       }
     });
 
-    // Global Close (using the robust logic we built earlier)
     document.addEventListener("click", (e) => {
       if (!dropdown.contains(e.target)) {
         listWrap.style.display = "none";
@@ -354,7 +461,6 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderFieldOptions(container) {
     if (!container) return;
 
-    // Master list of all possible fields
     const allFields = [
       { id: "f_products",              label: "Product" },
       { id: "f_use_case",              label: "Use Case" },
@@ -379,7 +485,6 @@ document.addEventListener("DOMContentLoaded", function () {
       \`;
     }).join("");
 
-    // Attach Change Events
     container.querySelectorAll(".dd-field-item-checkbox").forEach(chk => {
        chk.addEventListener("change", (e) => {
           handleToggleTab(e.target.dataset.id, e.target.dataset.label, e.target.checked);
@@ -389,17 +494,13 @@ document.addEventListener("DOMContentLoaded", function () {
   
   function handleToggleTab(id, label, isChecked) {
     if (isChecked) {
-       // Add if not exists
        if (!state.tabs.find(t => t.id === id)) {
          state.tabs.push({ id, label });
        }
     } else {
-       // Remove
        const idx = state.tabs.findIndex(t => t.id === id);
        if (idx !== -1) {
          state.tabs.splice(idx, 1);
-         
-         // If we removed the active tab, switch to the first one available
          if (state.currentTabId === id) {
            state.currentTabId = state.tabs[0]?.id || null;
          }
@@ -419,17 +520,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     tabContainer.innerHTML = "";
     
-    // Note: We need a unique ID for dragging if labels are not unique, but here keys are unique.
-    
     state.tabs.forEach((tab, index) => {
       const btn = document.createElement("a");
       btn.className = "drilldown-tab-button w-inline-block";
       if (tab.id === state.currentTabId) btn.classList.add("is-current");
       
-      // Pointer events none on text to avoid dragging text selection issues
       btn.innerHTML = \`<div class="text-block-7" style="pointer-events: none;">\${tab.label}</div>\`;
       
-      // Navigate on Click
       btn.addEventListener("click", () => {
         state.currentTabId = tab.id;
         renderTabs(); 
@@ -441,7 +538,6 @@ document.addEventListener("DOMContentLoaded", function () {
       btn.dataset.index = index;
 
       btn.addEventListener("dragstart", (e) => {
-        // We store the index of the item being dragged
         e.dataTransfer.setData("text/plain", index);
         e.dataTransfer.effectAllowed = "move";
         btn.style.opacity = "0.5";
@@ -449,12 +545,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
       btn.addEventListener("dragend", () => {
         btn.style.opacity = "1";
-        // Cleanup visual cues
         document.querySelectorAll(".drilldown-tab-button").forEach(b => b.classList.remove("drag-over"));
       });
 
       btn.addEventListener("dragover", (e) => {
-        e.preventDefault(); // allow dropping
+        e.preventDefault(); 
         e.dataTransfer.dropEffect = "move";
         btn.classList.add("drag-over");
       });
@@ -463,22 +558,15 @@ document.addEventListener("DOMContentLoaded", function () {
         btn.classList.remove("drag-over");
       });
 
-      // Handle Drop
       btn.addEventListener("drop", (e) => {
         e.preventDefault();
         const fromIndex = parseInt(e.dataTransfer.getData("text/plain"), 10);
         const toIndex = index;
         
         if (fromIndex !== toIndex) {
-          // Reorder state.tabs
           const movedItem = state.tabs.splice(fromIndex, 1)[0];
           state.tabs.splice(toIndex, 0, movedItem);
-          
-          // Re-render tabs to reflect new order
           renderTabs();
-          
-          // We might need to reload data because column order (fields param) 
-          // depends on tab order in our logic.
           loadLevel(); 
         }
       });
@@ -486,43 +574,46 @@ document.addEventListener("DOMContentLoaded", function () {
       tabContainer.appendChild(btn);
     });
     
-    // Append the + button at the end
     renderFieldSelector();
   }
 
 
   /* ============================================================
-     API & LOADING
+     CLIENT SIDE LOADING & AGGREGATION
      ============================================================ */
-  function buildApiUrl() {
-    const url = new URL("/api/data", API_BASE);
-    
-    // 1. Group By
-    url.searchParams.set("groupby", state.currentTabId);
-    
-    // 2. Filters
-    state.filters.forEach(f => {
-      url.searchParams.append(f.type, f.value);
-    });
-
-    // 3. Dynamic Columns
-    const relevantFields = state.tabs
-      .map(t => t.id)
-      .filter(id => id !== state.currentTabId);
-      
-    url.searchParams.set("fields", relevantFields.join(","));
-
-    return url.toString();
-  }
-
   async function loadLevel() {
-    const url = buildApiUrl();
+    if (!state.currentTabId) return;
+
     try {
-      const res = await fetch(url);
-      const json = await res.json();
-      table.setData(json);
+      // 1. Fetch Raw Ads (if not cached)
+      if (!_rawAdsCache) {
+          console.log("[Drilldown] Fetching raw ads...");
+          const res = await fetch(API_ADS);
+          _rawAdsCache = await res.json();
+      }
+
+      // 2. Identify Dynamic Columns (Fields) based on OTHER tabs
+      const dynamicCols = state.tabs
+        .map(t => t.id)
+        .filter(id => id !== state.currentTabId);
+      
+      // The table expects [name, adsCount, ...others]
+      const columns = ["name", "adsCount", ...dynamicCols];
+
+      // 3. Process Ads Locally
+      const rows = processAds(_rawAdsCache, {
+          groupBy: state.currentTabId,
+          filters: state.filters,
+          columns: dynamicCols
+      });
+      
+      console.log(\`[Drilldown] Aggregated \${state.currentTabId}: \`, rows.length, "rows");
+      
+      // 4. Update Table
+      table.setData({ columns, rows });
+
       renderChips();
-      renderTabs(); // Sync tab states
+      renderTabs(); // Sync UI
       
     } catch (err) {
       console.error("Load Error", err);
@@ -556,7 +647,6 @@ document.addEventListener("DOMContentLoaded", function () {
   // Global listener to close field selector dropdown
   document.addEventListener("click", (e) => {
     document.querySelectorAll(".dd-field-selector").forEach(selector => {
-      // If click is outside THIS selector, hide its dropdown
       if (!selector.contains(e.target)) {
          const dd = selector.querySelector(".dd-field-dropdown");
          if (dd) dd.style.display = "none";
@@ -565,7 +655,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
 });
-  `;
+`;
 
   res.setHeader("Content-Type", "text/javascript");
   res.status(200).send(code);
