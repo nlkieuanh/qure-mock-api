@@ -195,22 +195,28 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function buildGlobalSuggestions(ads, term) {
-    const hits = new Map(); // Use Map to dedup by "value|type" key
+    const hits = new Map(); // Dedup
+    const activeKeys = state.tabs.map(t => t.id); // Only search checked fields
 
-    // Define fields to ignore (metrics, IDs, internal fields)
-    const ignoredFields = new Set(["_id", "adsCount", "impressions", "spend", "ctr", "cpc", "roas", "date"]);
+    // Accessor helper for dot notation or direct key
+    const getVal = (obj, path) => {
+       if (obj[path] !== undefined) return obj[path];
+       return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+    };
 
     ads.forEach(ad => {
-       Object.keys(ad).forEach(key => {
-          if (ignoredFields.has(key)) return;
+       activeKeys.forEach(key => {
+          let raw = getVal(ad, key);
+          if (raw === undefined || raw === null) return;
           
           let values = [];
-          if (Array.isArray(ad[key])) values = ad[key];
-          else if (ad[key]) values = [ad[key]];
+          if (Array.isArray(raw)) values = raw;
+          else values = [raw];
           
           values.forEach(val => {
              const strVal = String(val);
              if (strVal.toLowerCase().includes(term)) {
+                // Use the key as type (so it maps back to the column label)
                 const uniqueKey = strVal + "|" + key;
                 if (!hits.has(uniqueKey)) {
                    hits.set(uniqueKey, { value: strVal, type: key });
