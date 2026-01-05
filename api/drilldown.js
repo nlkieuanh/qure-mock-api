@@ -1,4 +1,5 @@
-
+export default function handler(req, res) {
+  const code = `
 /* ============================================================
    UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
    Refactored for Dynamic Tabs & Universal API
@@ -17,17 +18,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // API Configuration
   const API_BASE = "https://qure-mock-api.vercel.app/api";
-
+  
   // State
   const state = {
     // Current active tab ID (matches API field key)
-    currentTabId: "f_products",
-
+    currentTabId: "f_products", 
+    
     // Dynamic Tabs Configuration
     tabs: [
       { id: "f_products", label: "Product" },
       { id: "f_use_case", label: "Use Case" },
-      { id: "f_angles", label: "Angle" }
+      { id: "f_angles",   label: "Angle" }
     ],
 
     // Active filters
@@ -56,16 +57,16 @@ document.addEventListener("DOMContentLoaded", function () {
       // 1. Build Header
       let html = '<table class="adv-channel-table"><thead><tr>';
       columns.forEach(col => {
-        html += `<th data-col="${col}">${this.pretty(col)}</th>`;
+        html += \`<th data-col="\${col}">\${this.pretty(col)}</th>\`;
       });
       html += '</tr></thead><tbody>';
 
       // 2. Build Rows
       rows.forEach(row => {
-        const keyVal = row[columns[0]];
-        html += `<tr class="dd-row" data-value="${keyVal}">`;
+        const keyVal = row[columns[0]]; 
+        html += \`<tr class="dd-row" data-value="\${keyVal}">\`;
         columns.forEach(col => {
-          html += `<td>${this.format(row[col])}</td>`;
+          html += \`<td>\${this.format(row[col])}</td>\`;
         });
         html += '</tr>';
       });
@@ -129,10 +130,10 @@ document.addEventListener("DOMContentLoaded", function () {
       if (map[key]) return map[key];
 
       // Clean up f_insights.trigger_type -> Trigger Type
-      const clean = key.split('.').pop();
+      const clean = key.split('.').pop(); 
       return clean.replace(/([A-Z])/g, " $1")
-        .replace(/_/g, " ")
-        .replace(/^\w/, c => c.toUpperCase());
+                .replace(/_/g, " ")
+                .replace(/^\w/, c => c.toUpperCase());
     }
 
     format(v) {
@@ -155,7 +156,7 @@ document.addEventListener("DOMContentLoaded", function () {
         hideSearchDropdown();
         return;
       }
-
+      
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => {
         performGlobalSearch(term);
@@ -210,12 +211,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     searchDropdown.innerHTML = list.map(item => {
-      const label = item.type === "f_products" ? "Product" :
-        item.type === "f_use_case" ? "Use Case" : "Angle";
-
-      return `<div class="dd-search-item" data-value="${item.value}" data-type="${item.type}">
-                <strong>${label}</strong>&nbsp;${item.value}
-              </div>`;
+      const label = item.type === "f_products" ? "Product" : 
+                    item.type === "f_use_case" ? "Use Case" : "Angle";
+                    
+      return \`<div class="dd-search-item" data-value="\${item.value}" data-type="\${item.type}">
+                <strong>\${label}</strong>&nbsp;\${item.value}
+              </div>\`;
     }).join("");
 
     searchDropdown.classList.remove("is-hidden");
@@ -253,13 +254,13 @@ document.addEventListener("DOMContentLoaded", function () {
     state.filters.forEach((f, idx) => {
       const chip = document.createElement("div");
       chip.className = "dd-chip";
-
+      
       const niceType = f.type.replace("f_", "").replace("_", " ");
-
-      chip.innerHTML = `
-        <span class="dd-chip-label">${niceType}: ${f.value}</span>
+      
+      chip.innerHTML = \`
+        <span class="dd-chip-label">\${niceType}: \${f.value}</span>
         <div class="dd-chip-remove">✕</div>
-      `;
+      \`;
       chip.querySelector(".dd-chip-remove").addEventListener("click", () => {
         state.filters.splice(idx, 1);
         loadLevel();
@@ -277,44 +278,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Check if selector exists
     let selector = card.querySelector(".dd-field-selector");
-
+    
     // If not exists, create it
     if (!selector) {
-      selector = document.createElement("div");
-      selector.className = "dd-field-selector";
-      // Basic styling to make it look like a button
-      selector.style.marginLeft = "10px";
-      selector.style.display = "inline-block";
-      selector.style.position = "relative";
-      selector.style.verticalAlign = "middle";
+       selector = document.createElement("div");
+       selector.className = "dd-field-selector"; 
+       // Basic styling to make it look like a button
+       selector.style.marginLeft = "10px";
+       selector.style.display = "inline-block";
+       selector.style.position = "relative";
+       selector.style.verticalAlign = "middle";
 
-      selector.innerHTML = `
+       selector.innerHTML = \`
          <div class="dd-add-btn" style="cursor:pointer; padding: 6px 14px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">+ View</div>
          <div class="dd-field-dropdown is-hidden" style="position: absolute; top: 120%; left: 0; background: white; border: 1px solid #ddd; z-index: 1000; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden;">
          </div>
-       `;
-
-      // Append to tab container (or next to it, depending on layout)
-      // TabContainer is flex, so appending works.
-      tabContainer.appendChild(selector);
-
-      const btn = selector.querySelector(".dd-add-btn");
-      const dd = selector.querySelector(".dd-field-dropdown");
-
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dd.classList.toggle("is-hidden");
-        if (!dd.classList.contains("is-hidden")) {
-          renderFieldOptions(dd);
-        }
-      });
-
-      document.addEventListener("click", (e) => {
-        if (!selector.contains(e.target)) dd.classList.add("is-hidden");
-      });
+       \`;
+       
+       // Append to tab container (or next to it, depending on layout)
+       // TabContainer is flex, so appending works.
+       tabContainer.appendChild(selector);
+       
+       const btn = selector.querySelector(".dd-add-btn");
+       const dd = selector.querySelector(".dd-field-dropdown");
+       
+       btn.addEventListener("click", (e) => {
+         e.stopPropagation();
+         dd.classList.toggle("is-hidden");
+         if (!dd.classList.contains("is-hidden")) {
+            renderFieldOptions(dd);
+         }
+       });
+       
+       document.addEventListener("click", (e) => {
+         if (!selector.contains(e.target)) dd.classList.add("is-hidden");
+       });
     } else {
-      // If it exists, ensure it is at the end of tabContainer
-      tabContainer.appendChild(selector);
+        // If it exists, ensure it is at the end of tabContainer
+        tabContainer.appendChild(selector);
     }
   }
 
@@ -322,42 +323,42 @@ document.addEventListener("DOMContentLoaded", function () {
     const availableFields = [
       { id: "f_insights.trigger_type", label: "Trigger Type" },
       { id: "f_insights.visual_style", label: "Visual Style" },
-      { id: "f_insights.hook_type", label: "Hook Type" },
-      { id: "platform", label: "Platform" },
-      { id: "f_offers", label: "Offers" }
+      { id: "f_insights.hook_type",    label: "Hook Type" },
+      { id: "platform",                label: "Platform" },
+      { id: "f_offers",                label: "Offers" }
     ];
-
+    
     // Filter out already active tabs
     const valid = availableFields.filter(f => !state.tabs.find(t => t.id === f.id));
-
+    
     if (valid.length === 0) {
       container.innerHTML = "<div style='padding:12px; color:#999; font-size: 13px;'>No more fields available</div>";
       return;
     }
-
-    container.innerHTML = valid.map(f => `
-      <div class="dd-field-option text-block-7" data-id="${f.id}" data-label="${f.label}" style="padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;">
-        ${f.label}
+    
+    container.innerHTML = valid.map(f => \`
+      <div class="dd-field-option text-block-7" data-id="\${f.id}" data-label="\${f.label}" style="padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;">
+        \${f.label}
       </div>
-    `).join("");
-
+    \`).join("");
+    
     container.querySelectorAll(".dd-field-option").forEach(opt => {
       opt.addEventListener("mouseover", () => opt.style.background = "#f9f9f9");
       opt.addEventListener("mouseout", () => opt.style.background = "transparent");
-
+      
       opt.addEventListener("click", () => {
         handleAddTab(opt.dataset.id, opt.dataset.label);
       });
     });
   }
-
+  
   function handleAddTab(id, label) {
     state.tabs.push({ id, label });
     state.currentTabId = id;
-
+    
     renderTabs();
     loadLevel();
-
+    
     const dd = card.querySelector(".dd-field-dropdown");
     if (dd) dd.classList.add("is-hidden");
   }
@@ -367,27 +368,27 @@ document.addEventListener("DOMContentLoaded", function () {
      ============================================================ */
   function renderTabs() {
     if (!tabContainer) return;
-
+    
     // Clear tabs but we need to preserve the selector if it was appended? 
     // Actually renderTabs rebuilds everything, including calling renderFieldSelector at the end.
-    tabContainer.innerHTML = "";
+    tabContainer.innerHTML = ""; 
 
     state.tabs.forEach((tab) => {
       const btn = document.createElement("a");
       btn.className = "drilldown-tab-button w-inline-block";
       if (tab.id === state.currentTabId) btn.classList.add("is-current");
-
-      btn.innerHTML = `<div class="text-block-7">${tab.label}</div>`;
-
+      
+      btn.innerHTML = \`<div class="text-block-7">\${tab.label}</div>\`;
+      
       btn.addEventListener("click", () => {
         state.currentTabId = tab.id;
-        renderTabs();
+        renderTabs(); 
         loadLevel();
       });
 
       tabContainer.appendChild(btn);
     });
-
+    
     // Append the + button at the end
     renderFieldSelector();
   }
@@ -398,10 +399,10 @@ document.addEventListener("DOMContentLoaded", function () {
      ============================================================ */
   function buildApiUrl() {
     const url = new URL("/api/data", API_BASE);
-
+    
     // 1. Group By
     url.searchParams.set("groupby", state.currentTabId);
-
+    
     // 2. Filters
     state.filters.forEach(f => {
       url.searchParams.append(f.type, f.value);
@@ -411,7 +412,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const relevantFields = state.tabs
       .map(t => t.id)
       .filter(id => id !== state.currentTabId);
-
+      
     url.searchParams.set("fields", relevantFields.join(","));
 
     return url.toString();
@@ -425,7 +426,7 @@ document.addEventListener("DOMContentLoaded", function () {
       table.setData(json);
       renderChips();
       renderTabs(); // Sync tab states
-
+      
     } catch (err) {
       console.error("Load Error", err);
     }
@@ -437,7 +438,7 @@ document.addEventListener("DOMContentLoaded", function () {
      ============================================================ */
   const table = new UniversalTable(wrapper, (value) => {
     // Row Click Handler -> Drill Down
-
+    
     // Filter by current row
     state.filters.push({ type: state.currentTabId, value });
 
@@ -445,14 +446,19 @@ document.addEventListener("DOMContentLoaded", function () {
     const curIdx = state.tabs.findIndex(t => t.id === state.currentTabId);
     if (curIdx >= 0 && curIdx < state.tabs.length - 1) {
       state.currentTabId = state.tabs[curIdx + 1].id;
-    }
+    } 
 
     loadLevel();
   });
 
   // Start
   initSearch();
-  renderTabs();
+  renderTabs(); 
   loadLevel();
 
 });
+  `;
+
+  res.setHeader("Content-Type", "text/javascript");
+  res.status(200).send(code);
+}
