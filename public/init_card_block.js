@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
       INIT DYNAMIC UNIVERSAL MODULE FOR ANY CARD BLOCK
   ========================================================================= */
   function initCardBlock(card) {
-    const API_ADS = "https://qure-mock-api.vercel.app/api/ads";
+    const API_ADS = "/api/ads";
 
     // Configuration
     let groupby = card.dataset.groupby;

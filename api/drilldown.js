@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const tabContainer = card.querySelector(".drilldown-tab-filter-wrap");
 
   // API Configuration
-  const API_ADS = "https://qure-mock-api.vercel.app/api/ads";
+  const API_ADS = "/api/ads";
   
   // State
   const state = {
