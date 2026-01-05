@@ -10,16 +10,22 @@ document.addEventListener("DOMContentLoaded", function () {
       INIT DYNAMIC UNIVERSAL MODULE FOR ANY CARD BLOCK
   ========================================================================= */
   function initCardBlock(card) {
+    const API_BASE = "https://qure-mock-api.vercel.app";
 
     // Determine API endpoint
-    let apiUrl = "/api/data";
+    let apiUrl = `${API_BASE}/api/data`;
     let groupby = card.dataset.groupby;
     let fields = card.dataset.fields; // NEW: Support custom columns
 
     // Fallback or explicit API override
     if (card.dataset.api) {
-      apiUrl = card.dataset.api;
-      // If it's a legacy direct link, groupby might be null, which is fine
+      let rawApi = card.dataset.api;
+      // If relative path, prepend Base
+      if (rawApi.startsWith("/")) {
+        apiUrl = API_BASE + rawApi;
+      } else {
+        apiUrl = rawApi;
+      }
     }
 
     const defaultMetric = card.dataset.defaultMetric || "adsCount";
@@ -55,7 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
         BUILD URL WITH FILTERS
     ========================================================================= */
     function buildUrl() {
-      const url = new URL(apiUrl, window.location.origin); // Use absolute URL construction for safety
+      const url = new URL(apiUrl); // Use absolute URL construction for safety
 
       // Add Base Params if using Universal API logic
       if (groupby) {
