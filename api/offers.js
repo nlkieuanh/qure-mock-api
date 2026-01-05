@@ -1,10 +1,47 @@
-import fs from "fs";
-import path from "path";
+import https from "https";
 
-export default function handler(req, res) {
+const insecureAgent = new https.Agent({ rejectUnauthorized: false });
+
+function getJson(url) {
+  return new Promise((resolve) => {
+    const req = https.request(
+      url,
+      { method: "GET", headers: { Accept: "application/json" }, agent: insecureAgent },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          const status = res.statusCode || 0;
+          try {
+            resolve({ status, json: data ? JSON.parse(data) : null });
+          } catch {
+            resolve({ status, json: null });
+          }
+        });
+      }
+    );
+    req.on("error", (err) => resolve({ status: 0, json: null }));
+    req.end();
+  });
+}
+
+export default async function handler(req, res) {
   try {
-    const filePath = path.join(process.cwd(), "data", "ads.json");
-    const ads = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    // Upstream Configuration
+    const baseUrl = "https://api.foresightiq.ai/";
+    const member = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
+    const apiUrl = new URL("api/advertising/product-combination", baseUrl);
+    apiUrl.searchParams.set("member", member);
+    apiUrl.searchParams.set("query", "vs. Old Method");
+
+    // Fetch Data
+    const { status, json } = await getJson(apiUrl.toString());
+
+    if (status < 200 || status >= 300) {
+      throw new Error(`Upstream API Error: ${status}`);
+    }
+
+    const ads = Array.isArray(json?.data?.results) ? json.data.results : [];
 
     const url = new URL(req.url, "http://localhost");
     const platform = url.searchParams.get("platform");
