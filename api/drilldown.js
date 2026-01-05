@@ -311,6 +311,11 @@ document.addEventListener("DOMContentLoaded", function () {
          listWrap.style.minWidth = "100%";
          listWrap.style.width = "max-content";
          
+         // Align Right
+         listWrap.style.position = "absolute"; // Ensure absolute positioning
+         listWrap.style.right = "0";
+         listWrap.style.left = "auto";
+         
          // Re-render to ensure checked state is fresh?
          renderFieldOptions(listInner); 
       } else {
@@ -345,7 +350,7 @@ document.addEventListener("DOMContentLoaded", function () {
     container.innerHTML = allFields.map(f => {
       const isChecked = state.tabs.some(t => t.id === f.id);
       return \`
-        <div class="dd-add-field-item" style="padding: 8px 12px; border-bottom: 1px solid #eee;">
+        <div class="dd-add-field-item">
            <label class="dd-field-item-div" style="display: flex; align-items: center; cursor: pointer; margin:0; white-space: nowrap;">
               <input type="checkbox" class="dd-field-item-checkbox" data-id="\${f.id}" data-label="\${f.label}" \${isChecked ? "checked" : ""} style="margin-right: 8px;">
               <div class="dd-field-item-text" style="font-size: 14px;">\${f.label}</div>
