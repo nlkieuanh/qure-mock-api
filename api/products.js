@@ -1,131 +1,40 @@
-import https from "https";
-
-const insecureAgent = new https.Agent({ rejectUnauthorized: false });
-
-function getJson(url) {
-  return new Promise((resolve) => {
-    const req = https.request(
-      url,
-      { method: "GET", headers: { Accept: "application/json" }, agent: insecureAgent },
-      (res) => {
-        let data = "";
-        res.on("data", (c) => (data += c));
-        res.on("end", () => {
-          const status = res.statusCode || 0;
-          try {
-            resolve({ status, json: data ? JSON.parse(data) : null, raw: data });
-          } catch {
-            resolve({ status, json: null, raw: data });
-          }
-        });
-      }
-    );
-    req.on("error", (err) => resolve({ status: 0, json: null, raw: String(err?.message || "") }));
-    req.end();
-  });
-}
-
-function getTopDist(ads, keyField) {
-  const counts = {};
-  ads.forEach(ad => {
-    const items = Array.isArray(ad[keyField]) ? ad[keyField] : [ad[keyField]];
-    items.forEach(i => {
-      const val = (i || "Unknown").trim();
-      if (!val) return;
-      counts[val] = (counts[val] || 0) + 1;
-    });
-  });
-
-  return Object.entries(counts)
-    .sort((a, b) => b[1] - a[1]) // Sort by count desc
-    .slice(0, 5) // Top 5
-    .map(([k, v]) => `${k} (${v})`)
-    .join(", ");
-}
+import { fetchAds, processAds } from "./helpers/core.js";
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
-
-  const { searchParams } = new URL(req.url, "http://localhost");
-  // Filters
-  const usecase = searchParams.get("usecase");
-  const angle = searchParams.get("angle");
-
-  const baseUrl = "https://api.foresightiq.ai/";
-  const member = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
-  const url = new URL("api/advertising/product-combination", baseUrl);
-  url.searchParams.set("member", member);
-  url.searchParams.set("query", "vs. Old Method"); // Default query
-
   try {
-    const { status, json, raw } = await getJson(url.toString());
+    const { searchParams } = new URL(req.url, "http://localhost");
+    const usecase = searchParams.get("usecase");
+    const angle = searchParams.get("angle");
 
-    if (status < 200 || status >= 300) {
-      return res.status(status || 500).json({ error: "Upstream error", detail: raw });
-    }
+    // 1. Fetch
+    const ads = await fetchAds();
 
-    const ads = Array.isArray(json?.data?.results) ? json.data.results : [];
+    // 2. Process
+    // Map legacy query params to actual field names for filtering
+    const filters = {};
+    if (usecase) filters.f_use_case = usecase;
+    if (angle) filters.f_angles = angle;
 
-    // -------------------------------------------
-    // FILTERING
-    // -------------------------------------------
-    let filtered = ads.slice();
-
-    if (usecase) {
-      filtered = filtered.filter(ad => {
-        let uc = [];
-        if (Array.isArray(ad.f_use_case)) uc = ad.f_use_case;
-        else if (typeof ad.f_use_case === "string") uc = [ad.f_use_case];
-        return uc.includes(usecase);
-      });
-    }
-
-    if (angle) {
-      filtered = filtered.filter(ad => {
-        let ang = [];
-        if (Array.isArray(ad.f_angles)) ang = ad.f_angles;
-        else if (typeof ad.f_angles === "string") ang = [ad.f_angles];
-        return ang.includes(angle);
-      });
-    }
-
-    // -------------------------------------------
-    // GROUP BY PRODUCT
-    // -------------------------------------------
-    const map = {};
-
-    filtered.forEach(ad => {
-      const product = ad.f_products || "Unknown";
-
-      if (!map[product]) {
-        map[product] = {
-          name: product,
-          adsCount: 0,
-          rawAds: []
-        };
-      }
-
-      map[product].adsCount += 1;
-      map[product].rawAds.push(ad);
+    const rows = processAds(ads, {
+      groupBy: "f_products",
+      filters: filters,
+      columns: ["f_use_case", "f_angles"] // Include distribution columns
     });
 
-    const rows = Object.values(map).map(p => ({
-      name: p.name,
-      adsCount: p.adsCount,
-      usecases: getTopDist(p.rawAds, "f_use_case"),
-      angles: getTopDist(p.rawAds, "f_angles")
+    // Map output keys to match legacy response expectation if needed (usecases, angles)
+    // processAds returns keys as 'f_use_case', 'f_angles'. 
+    // We might need to map them to 'usecases', 'angles' to maintain backward compatibility?
+    // Let's do a quick map.
+    const mappedRows = rows.map(r => ({
+      ...r,
+      usecases: r.f_use_case,
+      angles: r.f_angles
     }));
 
-    const response = {
+    return res.status(200).json({
       columns: ["name", "adsCount", "usecases", "angles"],
-      rows: rows
-    };
-
-    return res.status(200).json(response);
+      rows: mappedRows
+    });
 
   } catch (err) {
     console.error("API ERROR /api/products:", err);
