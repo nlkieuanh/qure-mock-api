@@ -43,8 +43,8 @@ function getTopDist(ads, keyField) {
     return Object.entries(counts)
         .sort((a, b) => b[1] - a[1]) // Sort by count desc
         .slice(0, 5) // Top 5
-        .map(([k, v]) => `${k} (${v})`)
-        .join(", ");
+        .map(([k, v]) => `${k} <span style="color:#888; font-size:0.9em">(${v})</span>`)
+        .join("<br>");
 }
 
 // Safely access nested property (e.g. "f_insights.trigger_type")

@@ -57,7 +57,13 @@ document.addEventListener("DOMContentLoaded", function () {
       // 1. Build Header
       let html = '<table class="adv-channel-table"><thead><tr>';
       columns.forEach(col => {
-        html += \`<th data-col="\${col}">\${this.pretty(col)}</th>\`;
+        let headerText = this.pretty(col);
+        // If this is the first column ("name"), use the current tab label
+        if (col === columns[0] && state.tabs.find(t => t.id === state.currentTabId)) {
+          headerText = state.tabs.find(t => t.id === state.currentTabId).label;
+        }
+        
+        html += \`<th data-col="\${col}">\${headerText}</th>\`;
       });
       html += '</tr></thead><tbody>';
 
