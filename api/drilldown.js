@@ -291,7 +291,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
        selector.innerHTML = \`
          <div class="dd-add-btn" style="cursor:pointer; padding: 6px 14px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">+ View</div>
-         <div class="dd-field-dropdown is-hidden" style="position: absolute; top: 120%; left: 0; background: white; border: 1px solid #ddd; z-index: 1000; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden;">
+         <div class="dd-field-dropdown is-hidden" style="position: absolute; top: 120%; left: 0; background: white; z-index: 1000; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden;">
          </div>
        \`;
        
