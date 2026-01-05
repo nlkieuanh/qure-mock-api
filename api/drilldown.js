@@ -277,6 +277,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
+  /* ============================================================
      FIELD SELECTOR (CHECKBOX DROPDOWN)
      ============================================================ */
   function renderFieldSelector() {
