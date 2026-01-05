@@ -276,8 +276,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
 
-  /* ============================================================
-  /* ============================================================
+
      FIELD SELECTOR (CHECKBOX DROPDOWN)
      ============================================================ */
   function renderFieldSelector() {
@@ -379,7 +378,6 @@ document.addEventListener("DOMContentLoaded", function () {
     
     renderTabs();
     if (state.currentTabId) loadLevel();
-  }
   }
 
  
