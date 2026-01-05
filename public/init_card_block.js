@@ -96,14 +96,25 @@ document.addEventListener("DOMContentLoaded", function () {
     /* =========================================================================
         FETCH DATA
     ========================================================================= */
+    /* =========================================================================
+        FETCH DATA
+    ========================================================================= */
     function loadData() {
-      fetch(buildUrl())
+      const url = buildUrl();
+      console.log(`[CardBlock] Loading: ${url}`);
+
+      fetch(url)
         .then(r => r.json())
         .then(json => {
+          console.log("[CardBlock] Response:", json);
 
           columns = json.columns || [];
           tableData = json.rows || [];
           tableView = [...tableData];  // independent view for sorting
+
+          if (tableData.length === 0) {
+            console.warn("[CardBlock] No data returned for this card:", card);
+          }
 
           // Default: All rows selected
           selectedKeys = new Set(tableData.map(r => r.name));
@@ -112,7 +123,7 @@ document.addEventListener("DOMContentLoaded", function () {
           renderTable(columns, tableView);
           updateChart();
         })
-        .catch(console.error);
+        .catch(err => console.error("[CardBlock] Error:", err));
     }
 
     /* =========================================================================
