@@ -307,6 +307,10 @@ document.addEventListener("DOMContentLoaded", function () {
       const isHidden = getComputedStyle(listWrap).display === "none";
       if (isHidden) {
          listWrap.style.display = "block";
+         // Auto expand width
+         listWrap.style.minWidth = "100%";
+         listWrap.style.width = "max-content";
+         
          // Re-render to ensure checked state is fresh?
          renderFieldOptions(listInner); 
       } else {
@@ -342,7 +346,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const isChecked = state.tabs.some(t => t.id === f.id);
       return \`
         <div class="dd-add-field-item" style="padding: 8px 12px; border-bottom: 1px solid #eee;">
-           <label class="dd-field-item-div" style="display: flex; align-items: center; cursor: pointer; margin:0;">
+           <label class="dd-field-item-div" style="display: flex; align-items: center; cursor: pointer; margin:0; white-space: nowrap;">
               <input type="checkbox" class="dd-field-item-checkbox" data-id="\${f.id}" data-label="\${f.label}" \${isChecked ? "checked" : ""} style="margin-right: 8px;">
               <div class="dd-field-item-text" style="font-size: 14px;">\${f.label}</div>
            </label>
