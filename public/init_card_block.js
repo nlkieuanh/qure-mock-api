@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", function () {
 
-  const cards = document.querySelectorAll(".card-block-wrap[data-api]");
+  /* Select by data-groupby OR data-api (backward compat) */
+  const cards = document.querySelectorAll(".card-block-wrap[data-groupby], .card-block-wrap[data-api]");
   if (!cards.length) return;
 
   cards.forEach(initCardBlock);
@@ -10,23 +11,34 @@ document.addEventListener("DOMContentLoaded", function () {
   ========================================================================= */
   function initCardBlock(card) {
 
-    const apiUrl         = card.dataset.api;
-    const defaultMetric  = card.dataset.defaultMetric || "adsCount";
+    // Determine API endpoint
+    let apiUrl = "/api/data";
+    let groupby = card.dataset.groupby;
 
-    const tableWrapper   = card.querySelector(".table-render");
-    const canvas         = card.querySelector("canvas");
+    // Fallback or explicit API override
+    if (card.dataset.api) {
+      apiUrl = card.dataset.api;
+      // If it's a legacy direct link, groupby might be null, which is fine
+    }
+
+    const defaultMetric = card.dataset.defaultMetric || "adsCount";
+
+    const tableWrapper = card.querySelector(".table-render");
+    const canvas = card.querySelector("canvas");
 
     /* ---- Webflow Metric Dropdown ---- */
-    const metricDropdown       = card.querySelector(".chart-metric-dd-select");
-    const metricList           = metricDropdown?.querySelector(".filter-dropdown-list-inner");
-    const metricSelectedLabel  = metricDropdown?.querySelector(".chart-metric-dd-selected");
+    const metricDropdown = card.querySelector(".chart-metric-dd-select");
+    const metricList = metricDropdown?.querySelector(".filter-dropdown-list-inner"); // Assume same structure
+    const metricSelectedLabel = metricDropdown?.querySelector(".chart-metric-dd-selected"); // Assume same structure
+
+    // Note: The user might have different class names on Webflow side, we stick to existing selectors as they worked before.
 
     const platformSelect = card.querySelector(".platform-select");
-    const dateSelect     = card.querySelector(".date-select");
+    const dateSelect = card.querySelector(".date-select");
 
-    let columns      = [];
-    let tableData    = [];   // raw API data
-    let tableView    = [];   // used for sorting in UI
+    let columns = [];
+    let tableData = [];
+    let tableView = [];
     let selectedKeys = new Set();
     let currentMetric = defaultMetric;
 
@@ -34,7 +46,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     /* Filters */
     if (platformSelect) platformSelect.addEventListener("change", loadData);
-    if (dateSelect)     dateSelect.addEventListener("change", loadData);
+    if (dateSelect) dateSelect.addEventListener("change", loadData);
 
     loadData();
 
@@ -42,20 +54,27 @@ document.addEventListener("DOMContentLoaded", function () {
         BUILD URL WITH FILTERS
     ========================================================================= */
     function buildUrl() {
-      const params = [];
+      const url = new URL(apiUrl, window.location.origin); // Use absolute URL construction for safety
 
-      if (platformSelect?.value)
-        params.push("platform=" + encodeURIComponent(platformSelect.value));
-
-      if (dateSelect?.value) {
-        const end   = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - Number(dateSelect.value));
-        params.push("start=" + start.toISOString());
-        params.push("end=" + end.toISOString());
+      // Add Base Params if using Universal API logic
+      if (groupby) {
+        url.searchParams.set("groupby", groupby);
+        url.searchParams.set("timeseries", "true");
       }
 
-      return apiUrl + (params.length ? "?" + params.join("&") : "");
+      // Add Filters
+      if (platformSelect?.value)
+        url.searchParams.set("platform", platformSelect.value);
+
+      if (dateSelect?.value) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - Number(dateSelect.value));
+        url.searchParams.set("start", start.toISOString());
+        url.searchParams.set("end", end.toISOString());
+      }
+
+      return url.toString();
     }
 
     /* =========================================================================
@@ -66,9 +85,9 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(r => r.json())
         .then(json => {
 
-          columns    = json.columns || [];
-          tableData  = json.rows || [];
-          tableView  = [...tableData];  // independent view for sorting
+          columns = json.columns || [];
+          tableData = json.rows || [];
+          tableView = [...tableData];  // independent view for sorting
 
           // Default: All rows selected
           selectedKeys = new Set(tableData.map(r => r.name));
