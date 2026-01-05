@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Determine API endpoint
     let apiUrl = "/api/data";
     let groupby = card.dataset.groupby;
+    let fields = card.dataset.fields; // NEW: Support custom columns
 
     // Fallback or explicit API override
     if (card.dataset.api) {
@@ -60,6 +61,15 @@ document.addEventListener("DOMContentLoaded", function () {
       if (groupby) {
         url.searchParams.set("groupby", groupby);
         url.searchParams.set("timeseries", "true");
+
+        // Default fields for charts if not specified (Standard Metrics)
+        // or user can specific data-fields="spend,revenue,roas,ctr"
+        if (fields) {
+          url.searchParams.set("fields", fields);
+        } else {
+          // Default set if nothing specified, to ensure chart works with standard metrics
+          url.searchParams.set("fields", "spend,revenue,roas,ctr");
+        }
       }
 
       // Add Filters
