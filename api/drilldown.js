@@ -2,8 +2,9 @@ export default function handler(req, res) {
   const code = `
 /* ============================================================
    UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
-   Refactored for Client-Side Aggregation (No /api/data dependency)
+   Refactored for Client-Side Aggregation (Using shared utils.js)
    ============================================================ */
+import { resolveValue, processAds, pretty, format } from "../utils.js";
 
 document.addEventListener("DOMContentLoaded", function () {
 
@@ -39,128 +40,6 @@ document.addEventListener("DOMContentLoaded", function () {
   let _rawAdsCache = null;
 
   /* ============================================================
-     HELPER FUNCTIONS (Ported from core.js)
-     ============================================================ */
-  
-  function resolveValue(obj, path) {
-    if (!path) return null;
-    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
-  }
-
-  function getTopDist(ads, keyField) {
-    const counts = {};
-    ads.forEach(ad => {
-        const items = resolveValue(ad, keyField);
-        const list = Array.isArray(items) ? items : [items];
-        
-        list.forEach(i => {
-            const val = (i || "Unknown").trim();
-            if (!val) return;
-            counts[val] = (counts[val] || 0) + 1;
-        });
-    });
-
-    return Object.entries(counts)
-        .sort((a, b) => b[1] - a[1]) // Sort by count desc
-        .slice(0, 5) // Top 5
-        .map(([k, v]) => \`\${k} <span style="color:#888; font-size:0.9em">(\${v})</span>\`)
-        .join("<br>");
-  }
-
-  function processAds(ads, { groupBy, filters = [], columns = [] } = {}) {
-    let filtered = ads;
-
-    // 1. Apply Filters
-    if (filters && filters.length) {
-         filters.forEach(f => {
-             filtered = filtered.filter(ad => {
-                 const actual = resolveValue(ad, f.type);
-                 if (Array.isArray(actual)) {
-                     // Check if any of the actual array items matches the filter value
-                     return actual.some(v => String(v) === String(f.value));
-                 }
-                 return String(actual) === String(f.value);
-             });
-         });
-    }
-
-    // 2. Grouping
-    const groups = {};
-    const hasGrouping = !!groupBy;
-    
-    filtered.forEach(ad => {
-        let groupKeys = ["Total"];
-        if (hasGrouping) {
-            const raw = resolveValue(ad, groupBy);
-            if (Array.isArray(raw)) groupKeys = raw;
-            else if (raw) groupKeys = [raw];
-            else groupKeys = ["Unknown"];
-        }
-
-        groupKeys.forEach(key => {
-            const k = typeof key === 'string' ? key.trim() : String(key);
-            if (!k) return;
-
-            if (!groups[k]) {
-                groups[k] = {
-                    name: k,
-                    adsCount: 0,
-                    spend: 0,
-                    revenue: 0,
-                    impressions: 0,
-                    clicks: 0,
-                    rawAds: []
-                };
-            }
-
-            const g = groups[k];
-            g.adsCount++;
-            g.spend += Number(ad.spend) || 0;
-            
-            // Revenue Handling (Windsor vs Standard)
-            if (ad.windsor && ad.windsor.action_values_omni_purchase) {
-                 g.revenue += Number(ad.windsor.action_values_omni_purchase);
-            } else {
-                 g.revenue += Number(ad.revenue) || 0;
-            }
-            
-            g.impressions += Number(ad.impressions) || 0;
-            g.clicks += Number(ad.clicks) || 0;
-            g.rawAds.push(ad);
-        });
-    });
-
-    // 3. Format & Calculate Metrics
-    const resultRows = Object.values(groups).map(g => {
-        const roas = g.spend > 0 ? g.revenue / g.spend : 0;
-        const ctr = g.impressions > 0 ? g.clicks / g.impressions : 0;
-        const cpc = g.clicks > 0 ? g.spend / g.clicks : 0;
-
-        const row = {
-            name: g.name,
-            adsCount: g.adsCount,
-            spend: g.spend,
-            revenue: g.revenue,
-            roas,
-            ctr,
-            cpc
-        };
-        
-        // Distribution Columns
-        if (columns.length > 0) {
-            columns.forEach(col => {
-                if (["name", "adsCount", "spend", "revenue", "roas", "ctr", "cpc"].includes(col)) return;
-                row[col] = getTopDist(g.rawAds, col);
-            });
-        }
-        
-        return row;
-    });
-
-    return resultRows;
-  }
-
-  /* ============================================================
      UNIVERSAL TABLE MODULE
      ============================================================ */
   class UniversalTable {
@@ -182,7 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // 1. Build Header
       let html = '<table class="adv-channel-table"><thead><tr>';
       columns.forEach(col => {
-        let headerText = this.pretty(col);
+        let headerText = pretty(col);
         // If this is the "name" column, use the current tab label
         if (col === "name" && state.tabs.find(t => t.id === state.currentTabId)) {
           headerText = state.tabs.find(t => t.id === state.currentTabId).label;
@@ -197,7 +76,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const keyVal = row["name"]; 
         html += \`<tr class="dd-row" data-value="\${keyVal}">\`;
         columns.forEach(col => {
-          html += \`<td>\${this.format(row[col])}</td>\`;
+          html += \`<td>\${format(row[col])}</td>\`;
         });
         html += '</tr>';
       });
@@ -249,33 +128,6 @@ document.addEventListener("DOMContentLoaded", function () {
           this.onRowClick(row.dataset.value);
         });
       });
-    }
-
-    pretty(key) {
-      const map = {
-        "name": "Name", // Fallback, usually overwritten
-        "f_products": "Product",
-        "f_use_case": "Use Case",
-        "f_angles": "Angle",
-        "adsCount": "Ads Count",
-        "f_offers": "Offer",
-        "platform": "Platform",
-        "f_insights.cta_type": "CTA Type",
-        "f_insights.hook_type": "Hook Type",
-        "f_insights.visual_style": "Visual Style",
-        "f_insights.trigger_type": "Trigger Type"
-      };
-      if (map[key]) return map[key];
-
-      const clean = key.split('.').pop(); 
-      return clean.replace(/([A-Z])/g, " $1")
-                .replace(/_/g, " ")
-                .replace(/^\w/, c => c.toUpperCase());
-    }
-
-    format(v) {
-      if (typeof v === "number") return v.toLocaleString();
-      return v ?? "";
     }
   }
 
@@ -358,7 +210,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     searchDropdown.innerHTML = list.map(item => {
-      const label = table.pretty(item.type);
+      const label = pretty(item.type);
       return \`<div class="dd-search-item" data-value="\${item.value}" data-type="\${item.type}">
                 <strong>\${label}</strong>: \${item.value}
               </div>\`;

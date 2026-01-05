@@ -1,4 +1,6 @@
 
+import { processAds, pretty, format } from "./utils.js";
+
 document.addEventListener("DOMContentLoaded", function () {
 
   /* Select by data-groupby ONLY */
@@ -45,129 +47,6 @@ document.addEventListener("DOMContentLoaded", function () {
     loadData();
 
     /* =========================================================================
-        HELPER FUNCTIONS (Simulating core.js logic on client)
-    ========================================================================= */
-    function resolveValue(obj, path) {
-      if (!path) return null;
-      return path.split('.').reduce((acc, part) => acc && acc[part], obj);
-    }
-
-    /*
-      Aggregates raw ads into groups based on `groupby` field.
-      Also generates timeseries data for each group.
-    */
-    function processAds(ads, { groupBy, filters = {} }) {
-      let filtered = ads;
-
-      // 1. Filter Platform
-      if (filters.platform) {
-        filtered = filtered.filter(ad => String(ad.platform).toLowerCase() === filters.platform.toLowerCase());
-      }
-      // 2. Filter Date Range
-      if (filters.start && filters.end) {
-        const s = new Date(filters.start);
-        const e = new Date(filters.end);
-        filtered = filtered.filter(ad => {
-          const d = new Date(ad.start_date || ad.date || 0);
-          return d >= s && d <= e;
-        });
-      }
-
-      // 3. Grouping
-      const groups = {};
-
-      filtered.forEach(ad => {
-        // Determine Group Key
-        let groupKeys = ["Total"];
-        if (groupBy) {
-          const raw = resolveValue(ad, groupBy);
-          if (Array.isArray(raw)) groupKeys = raw;
-          else if (raw) groupKeys = [raw];
-          else groupKeys = ["Unknown"];
-        }
-
-        groupKeys.forEach(key => {
-          const k = typeof key === 'string' ? key.trim() : String(key);
-          if (!k) return;
-
-          if (!groups[k]) {
-            groups[k] = {
-              name: k,
-              adsCount: 0,
-              spend: 0,
-              revenue: 0,
-              impressions: 0,
-              clicks: 0,
-              timeseries: {}
-            };
-          }
-
-          const g = groups[k];
-          g.adsCount++;
-          g.spend += Number(ad.spend) || 0;
-
-          // Revenue logic
-          if (ad.windsor && ad.windsor.action_values_omni_purchase) {
-            g.revenue += Number(ad.windsor.action_values_omni_purchase);
-          } else {
-            g.revenue += Number(ad.revenue) || 0;
-          }
-
-          g.impressions += Number(ad.impressions) || 0;
-          g.clicks += Number(ad.clicks) || 0;
-
-          // Timeseries Accumulation
-          const rawDate = ad.start_date || ad.date;
-          if (rawDate) {
-            const dateKey = rawDate.split("T")[0]; // YYYY-MM-DD
-            if (!g.timeseries[dateKey]) {
-              g.timeseries[dateKey] = {
-                date: dateKey,
-                adsCount: 0, spend: 0, revenue: 0, impressions: 0, clicks: 0
-              };
-            }
-            const ts = g.timeseries[dateKey];
-            ts.adsCount++;
-            ts.spend += Number(ad.spend) || 0;
-            if (ad.windsor && ad.windsor.action_values_omni_purchase) {
-              ts.revenue += Number(ad.windsor.action_values_omni_purchase);
-            } else {
-              ts.revenue += Number(ad.revenue) || 0;
-            }
-            ts.impressions += Number(ad.impressions) || 0;
-            ts.clicks += Number(ad.clicks) || 0;
-          }
-        });
-      });
-
-      // 4. Format Results
-      return Object.values(groups).map(g => {
-        const roas = g.spend > 0 ? g.revenue / g.spend : 0;
-        const ctr = g.impressions > 0 ? g.clicks / g.impressions : 0;
-        const cpc = g.clicks > 0 ? g.spend / g.clicks : 0;
-
-        // Process Timeseries for this group
-        const timeseriesArray = Object.values(g.timeseries).map(t => ({
-          ...t,
-          roas: t.spend > 0 ? t.revenue / t.spend : 0,
-          ctr: t.impressions > 0 ? t.clicks / t.impressions : 0,
-          cpc: t.clicks > 0 ? t.spend / t.clicks : 0
-        })).sort((a, b) => a.date.localeCompare(b.date));
-
-        return {
-          name: g.name,
-          adsCount: g.adsCount,
-          spend: g.spend,
-          revenue: g.revenue,
-          roas,
-          ctr,
-          cpc,
-          timeseries: timeseriesArray
-        };
-      });
-    }
-
-    /* =========================================================================
         LOAD & PROCESS DATA
     ========================================================================= */
     async function loadData() {
@@ -191,15 +70,13 @@ document.addEventListener("DOMContentLoaded", function () {
           filters.end = end.toISOString();
         }
 
-        // 3. Process Locally
+        // 3. Process Locally (Using Shared Utils)
         const processedRows = processAds(_rawAdsCache, {
           groupBy: groupby,
           filters: filters
         });
 
         // 4. Determine Columns
-        // If 'fields' data attr matches logical columns, use them, else defaults
-        // Note: For init_card_block, we usually just show metric columns + name.
         let defaultCols = ["name", "adsCount", "spend", "revenue", "roas"];
         if (fieldsParam) {
           defaultCols = ["name", ...fieldsParam.split(",").map(s => s.trim())];
@@ -374,25 +251,6 @@ document.addEventListener("DOMContentLoaded", function () {
       canvas.removeAttribute("height");
       canvas.style.width = "100%";
       canvas.style.height = "100%";
-    }
-
-    /* =========================================================================
-        HELPERS
-    ========================================================================= */
-    function pretty(str) {
-      if (!str) return "";
-      return str
-        .replace(/([A-Z])/g, " $1")
-        .replace(/^./, c => c.toUpperCase());
-    }
-
-    function format(v) {
-      if (typeof v === "number") {
-        // If it's a float-like number, restrict decimals
-        if (!Number.isInteger(v)) return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        return v.toLocaleString();
-      }
-      return v ?? "";
     }
   }
 });
