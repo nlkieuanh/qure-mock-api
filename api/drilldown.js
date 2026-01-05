@@ -297,7 +297,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
        selector.innerHTML = \`
          <div class="dd-add-btn" style="cursor:pointer; padding: 6px 14px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">+ Field</div>
-         <div class="dd-field-dropdown is-hidden" style="position: absolute; top: 120%; left: 0; background: white; z-index: 1000; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden;">
+         <div class="dd-field-dropdown" style="display: none; position: absolute; top: 120%; left: 0; background: white; z-index: 1000; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden;">
          </div>
        \`;
        
@@ -310,9 +310,12 @@ document.addEventListener("DOMContentLoaded", function () {
        
        btn.addEventListener("click", (e) => {
          e.stopPropagation();
-         dd.classList.toggle("is-hidden");
-         if (!dd.classList.contains("is-hidden")) {
+         // Toggle Display
+         if (dd.style.display === "none") {
+            dd.style.display = "block";
             renderFieldOptions(dd);
+         } else {
+            dd.style.display = "none";
          }
        });
        
@@ -512,14 +515,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Global listener to close field selector dropdown
   document.addEventListener("click", (e) => {
-    const selector = document.querySelector(".dd-field-selector");
-    if (!selector) return;
-    
-    // If click is outside selector, hide dropdown
-    if (!selector.contains(e.target)) {
-       const dd = selector.querySelector(".dd-field-dropdown");
-       if (dd) dd.classList.add("is-hidden");
-    }
+    document.querySelectorAll(".dd-field-selector").forEach(selector => {
+      // If click is outside THIS selector, hide its dropdown
+      if (!selector.contains(e.target)) {
+         const dd = selector.querySelector(".dd-field-dropdown");
+         if (dd) dd.style.display = "none";
+      }
+    });
   });
 
 });
