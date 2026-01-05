@@ -277,97 +277,109 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
   /* ============================================================
-     FIELD SELECTOR (DYNAMIC ADD)
+  /* ============================================================
+     FIELD SELECTOR (CHECKBOX DROPDOWN)
      ============================================================ */
   function renderFieldSelector() {
-    if (!tabContainer) return;
+    // 1. Find the Webflow dropdown component
+    const dropdown = card.querySelector(".dd-add-field-select");
+    if (!dropdown) return; // If user hasn't created it yet, do nothing (or we could fallback)
 
-    // Check if selector exists
-    let selector = card.querySelector(".dd-field-selector");
+    const toggle = dropdown.querySelector(".dd-add-field-toggle");
+    const listWrap = dropdown.querySelector(".dd-add-field-list");
+    const listInner = dropdown.querySelector(".dd-add-field-list-inner") || listWrap;
     
-    // If not exists, create it
-    if (!selector) {
-       selector = document.createElement("div");
-       selector.className = "dd-field-selector"; 
-       // Basic styling to make it look like a button
-       selector.style.marginLeft = "10px";
-       selector.style.display = "inline-block";
-       selector.style.position = "relative";
-       selector.style.verticalAlign = "middle";
+    if (!toggle || !listWrap) return;
 
-       selector.innerHTML = \`
-         <div class="dd-add-btn" style="cursor:pointer; padding: 6px 14px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">+ Field</div>
-         <div class="dd-field-dropdown" style="display: none; position: absolute; top: 120%; left: 0; background: white; z-index: 1000; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden;">
-         </div>
-       \`;
-       
-       // Append to tab container (or next to it, depending on layout)
-       // TabContainer is flex, so appending works.
-       tabContainer.appendChild(selector);
-       
-       const btn = selector.querySelector(".dd-add-btn");
-       const dd = selector.querySelector(".dd-field-dropdown");
-       
-       btn.addEventListener("click", (e) => {
-         e.stopPropagation();
-         // Toggle Display
-         if (dd.style.display === "none") {
-            dd.style.display = "block";
-            renderFieldOptions(dd);
-         } else {
-            dd.style.display = "none";
-         }
-       });
-       
-       // Note: Global click listener to close dropdown is now handled globally below
-    } else {
-        // If it exists, ensure it is at the end of tabContainer
-        tabContainer.appendChild(selector);
-    }
+    // 2. Initial Render of Options
+    renderFieldOptions(listInner);
+
+    // 3. Toggle Event
+    // Remove old listeners to avoid duplicates? Ideally this function runs once or we safeguard.
+    // We can assume renderFieldSelector is called frequently? No, renderTabs calls it.
+    // So we should prevent double-binding.
+    if (dropdown.dataset.bound) return; 
+    dropdown.dataset.bound = "true";
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Webflow interactions might handle display, but if we need manual control:
+      const isHidden = getComputedStyle(listWrap).display === "none";
+      if (isHidden) {
+         listWrap.style.display = "block";
+         // Re-render to ensure checked state is fresh?
+         renderFieldOptions(listInner); 
+      } else {
+         listWrap.style.display = "none";
+      }
+    });
+
+    // Global Close (using the robust logic we built earlier)
+    document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target)) {
+        listWrap.style.display = "none";
+      }
+    });
   }
 
   function renderFieldOptions(container) {
-    const availableFields = [
+    if (!container) return;
+
+    // Master list of all possible fields
+    const allFields = [
+      { id: "f_products",              label: "Product" },
+      { id: "f_use_case",              label: "Use Case" },
+      { id: "f_angles",                label: "Angle" },
       { id: "f_insights.trigger_type", label: "Trigger Type" },
       { id: "f_insights.visual_style", label: "Visual Style" },
       { id: "f_insights.hook_type",    label: "Hook Type" },
       { id: "platform",                label: "Platform" },
-      { id: "f_offers",                label: "Offers" }
+      { id: "f_offers",                label: "Offer" },
+      { id: "f_insights.cta_type",     label: "CTA Type" }
     ];
-    
-    // Filter out already active tabs
-    const valid = availableFields.filter(f => !state.tabs.find(t => t.id === f.id));
-    
-    if (valid.length === 0) {
-      container.innerHTML = "<div style='padding:12px; color:#999; font-size: 13px;'>No more fields available</div>";
-      return;
-    }
-    
-    container.innerHTML = valid.map(f => \`
-      <div class="dd-field-option text-block-7" data-id="\${f.id}" data-label="\${f.label}" style="padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;">
-        \${f.label}
-      </div>
-    \`).join("");
-    
-    container.querySelectorAll(".dd-field-option").forEach(opt => {
-      opt.addEventListener("mouseover", () => opt.style.background = "#f9f9f9");
-      opt.addEventListener("mouseout", () => opt.style.background = "transparent");
-      
-      opt.addEventListener("click", () => {
-        handleAddTab(opt.dataset.id, opt.dataset.label);
-      });
+
+    container.innerHTML = allFields.map(f => {
+      const isChecked = state.tabs.some(t => t.id === f.id);
+      return \`
+        <div class="dd-add-field-item" style="padding: 8px 12px; border-bottom: 1px solid #eee;">
+           <label class="dd-field-item-div" style="display: flex; align-items: center; cursor: pointer; margin:0;">
+              <input type="checkbox" class="dd-field-item-checkbox" data-id="\${f.id}" data-label="\${f.label}" \${isChecked ? "checked" : ""} style="margin-right: 8px;">
+              <div class="dd-field-item-text" style="font-size: 14px;">\${f.label}</div>
+           </label>
+        </div>
+      \`;
+    }).join("");
+
+    // Attach Change Events
+    container.querySelectorAll(".dd-field-item-checkbox").forEach(chk => {
+       chk.addEventListener("change", (e) => {
+          handleToggleTab(e.target.dataset.id, e.target.dataset.label, e.target.checked);
+       });
     });
   }
   
-  function handleAddTab(id, label) {
-    state.tabs.push({ id, label });
-    state.currentTabId = id;
+  function handleToggleTab(id, label, isChecked) {
+    if (isChecked) {
+       // Add if not exists
+       if (!state.tabs.find(t => t.id === id)) {
+         state.tabs.push({ id, label });
+       }
+    } else {
+       // Remove
+       const idx = state.tabs.findIndex(t => t.id === id);
+       if (idx !== -1) {
+         state.tabs.splice(idx, 1);
+         
+         // If we removed the active tab, switch to the first one available
+         if (state.currentTabId === id) {
+           state.currentTabId = state.tabs[0]?.id || null;
+         }
+       }
+    }
     
     renderTabs();
-    loadLevel();
-    
-    const dd = card.querySelector(".dd-field-dropdown");
-    if (dd) dd.classList.add("is-hidden");
+    if (state.currentTabId) loadLevel();
+  }
   }
 
  
