@@ -346,10 +346,24 @@ document.addEventListener("DOMContentLoaded", function () {
   
   function handleToggleTab(id, label, isChecked) {
     if (isChecked) {
+       // Guard: Max 5
+       if (state.tabs.length >= 5) {
+         alert("Limit reached: You can select a maximum of 5 fields.");
+         renderTabs(); // Sync UI back
+         return;
+       }
+       
        if (!state.tabs.find(t => t.id === id)) {
          state.tabs.push({ id, label });
        }
     } else {
+       // Guard: Min 1
+       if (state.tabs.length <= 1) {
+         alert("Limit reached: You must have at least one active tab.");
+         renderTabs(); // Sync UI back
+         return;
+       }
+       
        const idx = state.tabs.findIndex(t => t.id === id);
        if (idx !== -1) {
          state.tabs.splice(idx, 1);
