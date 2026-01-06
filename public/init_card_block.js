@@ -123,8 +123,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!metricList) return;
       metricList.innerHTML = "";
 
-      // Available metrics to toggle in chart
-      const metrics = ["adsCount", "spend", "revenue", "roas", "ctr", "cpc"];
+      // Available metrics to toggle in chart (Derived from Table Columns)
+      // Exclude 'name' and any known non-numeric columns if necessary
+      const metrics = columns.filter(c => c !== "name");
 
       metrics.forEach(m => {
         const item = document.createElement("div");
