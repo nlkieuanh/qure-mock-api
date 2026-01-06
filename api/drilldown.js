@@ -444,24 +444,42 @@ document.addEventListener("DOMContentLoaded", function () {
           _rawAdsCache = await res.json();
       }
 
-      // 2. Identify Dynamic Columns (Fields) based on OTHER tabs
+      // 2. Identify Dynamic Columns (Fields) based on OTHER tabs (Distributions)
       const dynamicCols = state.tabs
         .map(t => t.id)
         .filter(id => id !== state.currentTabId);
       
-      // The table expects [name, adsCount, ...others]
-      const columns = ["name", "adsCount", ...dynamicCols];
-
-      // 3. Process Ads Locally
+      // 3. Process Ads Locally (Pass dynamicCols to calculate distributions)
       const rows = processAds(_rawAdsCache, {
           groupBy: state.currentTabId,
           filters: state.filters,
           columns: dynamicCols
       });
       
+      // 4. Determine Columns Dynamically based on Data
+      // Goal: Name -> AdsCount -> Upstream Metrics -> Distributions
+      let columns = ["name", "adsCount"];
+
+      if (rows.length > 0) {
+          const firstRow = rows[0];
+          // Get Upstream Numeric Metrics (Exclude calc metrics like roas, ctr, cpc for now)
+          const metricKeys = Object.keys(firstRow).filter(k => 
+              typeof firstRow[k] === 'number' && 
+              !["adsCount", "roas", "ctr", "cpc"].includes(k)
+          );
+          
+          columns.push(...metricKeys);
+      } else {
+          // Fallback if no data
+          columns.push("spend", "revenue"); 
+      }
+
+      // Add Distribution Columns at the end
+      columns.push(...dynamicCols);
+
       console.log(\`[Drilldown] Aggregated \${state.currentTabId}: \`, rows.length, "rows");
       
-      // 4. Update Table
+      // 5. Update Table
       table.setData({ columns, rows });
 
       renderChips();
