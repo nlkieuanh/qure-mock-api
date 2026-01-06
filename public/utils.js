@@ -142,14 +142,19 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
 
         // Extract Metric Values (Dynamically from ad.metrics + hardcoded fallbacks)
         const m = ad.metrics || {};
-        // Base keys that we always want to track if they exist in root ad object (fallback)
+
+        // Distinguish Summable vs Ratio metrics
+        // We only SUM absolute numbers. Ratios must be recalculated.
+        // Update: Added 'revPerAd' to excluded list
+        const RATIO_KEYS = ["roas", "ctr", "cpc", "revPerAd"];
+
         const baseMetrics = {
             spend: Number(m.totalSpend ?? ad.spend ?? 0),
             revenue: Number(m.totalRevenue ?? ad.revenue ?? 0),
             impressions: Number(m.impressions ?? ad.impressions ?? 0),
             clicks: Number(m.clicks ?? ad.clicks ?? 0),
             ...Object.keys(m).reduce((acc, k) => {
-                if (typeof m[k] === 'number') acc[k] = m[k];
+                if (typeof m[k] === 'number' && !RATIO_KEYS.includes(k)) acc[k] = m[k];
                 return acc;
             }, {})
         };
@@ -208,10 +213,12 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
         const revenue = g.metrics.totalRevenue || g.metrics.revenue || 0;
         const impressions = g.metrics.impressions || 0;
         const clicks = g.metrics.clicks || 0;
+        const adsCount = g.adsCount || 1;
 
         const roas = spend > 0 ? revenue / spend : 0;
         const ctr = impressions > 0 ? clicks / impressions : 0;
         const cpc = clicks > 0 ? spend / clicks : 0;
+        const revPerAd = adsCount > 0 ? revenue / adsCount : 0;
 
         const row = {
             name: g.name,
@@ -219,6 +226,7 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
             roas,
             ctr,
             cpc,
+            revPerAd,
             ...g.metrics // Spread all aggregated metrics (totalSpend, totalRevenue, etc.)
         };
 

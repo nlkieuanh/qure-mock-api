@@ -444,28 +444,23 @@ document.addEventListener("DOMContentLoaded", function () {
           _rawAdsCache = await res.json();
       }
 
-      // 2. Identify Dynamic Columns (Fields) based on OTHER tabs (Distributions)
-      const dynamicCols = state.tabs
-        .map(t => t.id)
-        .filter(id => id !== state.currentTabId);
-      
-      // 3. Process Ads Locally (Pass dynamicCols to calculate distributions)
+      // 3. Process Ads Locally (No extra columns needed)
       const rows = processAds(_rawAdsCache, {
           groupBy: state.currentTabId,
-          filters: state.filters,
-          columns: dynamicCols
+          filters: state.filters
+          // columns: dynamicCols // REMOVED: No longer computing distributions
       });
       
       // 4. Determine Columns Dynamically based on Data
-      // Goal: Name -> AdsCount -> Upstream Metrics -> Distributions
+      // Goal: Name -> AdsCount -> Upstream Metrics
       let columns = ["name", "adsCount"];
 
       if (rows.length > 0) {
           const firstRow = rows[0];
-          // Get Upstream Numeric Metrics (Exclude calc metrics like roas, ctr, cpc for now)
+          // Get Upstream Numeric Metrics (Now including calculated ratios like roas, ctr, cpc)
           const metricKeys = Object.keys(firstRow).filter(k => 
               typeof firstRow[k] === 'number' && 
-              !["adsCount", "roas", "ctr", "cpc"].includes(k)
+              !["adsCount"].includes(k) 
           );
           
           columns.push(...metricKeys);
@@ -474,8 +469,7 @@ document.addEventListener("DOMContentLoaded", function () {
           columns.push("spend", "revenue"); 
       }
 
-      // Add Distribution Columns at the end
-      columns.push(...dynamicCols);
+      // REMOVED: columns.push(...dynamicCols);
 
       console.log(\`[Drilldown] Aggregated \${state.currentTabId}: \`, rows.length, "rows");
       
