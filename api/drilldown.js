@@ -352,7 +352,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (toast) {
           // Use Webflow styled toast
           toast.textContent = message;
-          toast.style.display = "block"; // Or 'flex', depending on Webflow setup
+          toast.style.display = "flex"; // Or 'flex', depending on Webflow setup
           
           // Auto-hide after 3 seconds
           setTimeout(() => {
@@ -368,7 +368,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (isChecked) {
        // Guard: Max 5
        if (state.tabs.length >= 5) {
-         showToast("Limit reached: You can select a maximum of 5 fields.");
+         showToast("Limit reached: Maximum 5 fields.");
          renderTabs(); // Sync UI back
          return;
        }
@@ -379,7 +379,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
        // Guard: Min 1
        if (state.tabs.length <= 1) {
-         showToast("Limit reached: You must have at least one active tab.");
+         showToast("Limit reached: Minimum 1 field.");
          renderTabs(); // Sync UI back
          return;
        }
