@@ -140,6 +140,13 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
             else groupKeys = ["Unknown"];
         }
 
+        // Extract Metric Values
+        const m = ad.metrics || {};
+        const spend = Number(m.totalSpend ?? ad.spend ?? 0);
+        const revenue = Number(m.totalRevenue ?? ad.revenue ?? 0);
+        const impressions = Number(m.impressions ?? ad.impressions ?? 0);
+        const clicks = Number(m.clicks ?? ad.clicks ?? 0);
+
         groupKeys.forEach(key => {
             const k = typeof key === 'string' ? key.trim() : String(key);
             if (!k) return;
@@ -159,17 +166,10 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
 
             const g = groups[k];
             g.adsCount++;
-            g.spend += Number(ad.spend) || 0;
-
-            // Revenue
-            if (ad.windsor && ad.windsor.action_values_omni_purchase) {
-                g.revenue += Number(ad.windsor.action_values_omni_purchase);
-            } else {
-                g.revenue += Number(ad.revenue) || 0;
-            }
-
-            g.impressions += Number(ad.impressions) || 0;
-            g.clicks += Number(ad.clicks) || 0;
+            g.spend += spend;
+            g.revenue += revenue;
+            g.impressions += impressions;
+            g.clicks += clicks;
             g.rawAds.push(ad);
 
             // Timeseries
@@ -185,14 +185,10 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
                     }
                     const ts = g.timeseries[dateKey];
                     ts.adsCount++;
-                    ts.spend += Number(ad.spend) || 0;
-                    if (ad.windsor && ad.windsor.action_values_omni_purchase) {
-                        ts.revenue += Number(ad.windsor.action_values_omni_purchase);
-                    } else {
-                        ts.revenue += Number(ad.revenue) || 0;
-                    }
-                    ts.impressions += Number(ad.impressions) || 0;
-                    ts.clicks += Number(ad.clicks) || 0;
+                    ts.spend += spend;
+                    ts.revenue += revenue;
+                    ts.impressions += impressions;
+                    ts.clicks += clicks;
                 }
             }
         });
