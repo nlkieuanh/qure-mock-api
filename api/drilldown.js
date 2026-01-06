@@ -344,11 +344,31 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   
+  /* ============================================================
+     TOAST NOTIFICATION (Webflow Integration)
+     ============================================================ */
+  function showToast(message) {
+      const toast = card.querySelector(".dd-warning-toast");
+      if (toast) {
+          // Use Webflow styled toast
+          toast.textContent = message;
+          toast.style.display = "block"; // Or 'flex', depending on Webflow setup
+          
+          // Auto-hide after 3 seconds
+          setTimeout(() => {
+              toast.style.display = "none";
+          }, 3000);
+      } else {
+          // Fallback to Native Alert
+          alert(message);
+      }
+  }
+
   function handleToggleTab(id, label, isChecked) {
     if (isChecked) {
        // Guard: Max 5
        if (state.tabs.length >= 5) {
-         alert("Limit reached: You can select a maximum of 5 fields.");
+         showToast("Limit reached: You can select a maximum of 5 fields.");
          renderTabs(); // Sync UI back
          return;
        }
@@ -359,7 +379,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
        // Guard: Min 1
        if (state.tabs.length <= 1) {
-         alert("Limit reached: You must have at least one active tab.");
+         showToast("Limit reached: You must have at least one active tab.");
          renderTabs(); // Sync UI back
          return;
        }
