@@ -140,12 +140,19 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
             else groupKeys = ["Unknown"];
         }
 
-        // Extract Metric Values
+        // Extract Metric Values (Dynamically from ad.metrics + hardcoded fallbacks)
         const m = ad.metrics || {};
-        const spend = Number(m.totalSpend ?? ad.spend ?? 0);
-        const revenue = Number(m.totalRevenue ?? ad.revenue ?? 0);
-        const impressions = Number(m.impressions ?? ad.impressions ?? 0);
-        const clicks = Number(m.clicks ?? ad.clicks ?? 0);
+        // Base keys that we always want to track if they exist in root ad object (fallback)
+        const baseMetrics = {
+            spend: Number(m.totalSpend ?? ad.spend ?? 0),
+            revenue: Number(m.totalRevenue ?? ad.revenue ?? 0),
+            impressions: Number(m.impressions ?? ad.impressions ?? 0),
+            clicks: Number(m.clicks ?? ad.clicks ?? 0),
+            ...Object.keys(m).reduce((acc, k) => {
+                if (typeof m[k] === 'number') acc[k] = m[k];
+                return acc;
+            }, {})
+        };
 
         groupKeys.forEach(key => {
             const k = typeof key === 'string' ? key.trim() : String(key);
@@ -155,10 +162,7 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
                 groups[k] = {
                     name: k,
                     adsCount: 0,
-                    spend: 0,
-                    revenue: 0,
-                    impressions: 0,
-                    clicks: 0,
+                    metrics: {}, // Store aggregated metrics here
                     rawAds: [],
                     timeseries: {}
                 };
@@ -166,11 +170,12 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
 
             const g = groups[k];
             g.adsCount++;
-            g.spend += spend;
-            g.revenue += revenue;
-            g.impressions += impressions;
-            g.clicks += clicks;
             g.rawAds.push(ad);
+
+            // Aggregate Metrics
+            Object.entries(baseMetrics).forEach(([mKey, mVal]) => {
+                g.metrics[mKey] = (g.metrics[mKey] || 0) + mVal;
+            });
 
             // Timeseries
             if (timeseries) {
@@ -180,15 +185,15 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
                     if (!g.timeseries[dateKey]) {
                         g.timeseries[dateKey] = {
                             date: dateKey,
-                            adsCount: 0, spend: 0, revenue: 0, impressions: 0, clicks: 0
+                            adsCount: 0,
+                            metrics: {}
                         };
                     }
                     const ts = g.timeseries[dateKey];
                     ts.adsCount++;
-                    ts.spend += spend;
-                    ts.revenue += revenue;
-                    ts.impressions += impressions;
-                    ts.clicks += clicks;
+                    Object.entries(baseMetrics).forEach(([mKey, mVal]) => {
+                        ts.metrics[mKey] = (ts.metrics[mKey] || 0) + mVal;
+                    });
                 }
             }
         });
@@ -196,36 +201,53 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
 
     // --- 3. FORMAT RESULTS ---
     return Object.values(groups).map(g => {
-        const roas = g.spend > 0 ? g.revenue / g.spend : 0;
-        const ctr = g.impressions > 0 ? g.clicks / g.impressions : 0;
-        const cpc = g.clicks > 0 ? g.spend / g.clicks : 0;
+        // Core Calculated Metrics (ROAS, CTR, CPC)
+        // Note: We use 'spend', 'revenue', 'impressions', 'clicks' keys if they exist in aggregated metrics
+        // If API returns different keys (e.g. 'totalSpend'), we need to map them for these calculations
+        const spend = g.metrics.totalSpend || g.metrics.spend || 0;
+        const revenue = g.metrics.totalRevenue || g.metrics.revenue || 0;
+        const impressions = g.metrics.impressions || 0;
+        const clicks = g.metrics.clicks || 0;
+
+        const roas = spend > 0 ? revenue / spend : 0;
+        const ctr = impressions > 0 ? clicks / impressions : 0;
+        const cpc = clicks > 0 ? spend / clicks : 0;
 
         const row = {
             name: g.name,
             adsCount: g.adsCount,
-            spend: g.spend,
-            revenue: g.revenue,
             roas,
             ctr,
-            cpc
+            cpc,
+            ...g.metrics // Spread all aggregated metrics (totalSpend, totalRevenue, etc.)
         };
 
         // Distribution columns
         if (columns.length > 0) {
             columns.forEach(col => {
-                if (["name", "adsCount", "spend", "revenue", "roas", "ctr", "cpc"].includes(col)) return;
+                // Skip if col is a metric key we already have
+                if (row.hasOwnProperty(col)) return;
                 row[col] = getTopDist(g.rawAds, col);
             });
         }
 
         // Timeseries Array
         if (timeseries) {
-            row.timeseries = Object.values(g.timeseries).map(t => ({
-                ...t,
-                roas: t.spend > 0 ? t.revenue / t.spend : 0,
-                ctr: t.impressions > 0 ? t.clicks / t.impressions : 0,
-                cpc: t.clicks > 0 ? t.spend / t.clicks : 0
-            })).sort((a, b) => a.date.localeCompare(b.date));
+            row.timeseries = Object.values(g.timeseries).map(t => {
+                const tSpend = t.metrics.totalSpend || t.metrics.spend || 0;
+                const tRevenue = t.metrics.totalRevenue || t.metrics.revenue || 0;
+                const tImpressions = t.metrics.impressions || 0;
+                const tClicks = t.metrics.clicks || 0;
+
+                return {
+                    date: t.date,
+                    adsCount: t.adsCount,
+                    roas: tSpend > 0 ? tRevenue / tSpend : 0,
+                    ctr: tImpressions > 0 ? tClicks / tImpressions : 0,
+                    cpc: tClicks > 0 ? tSpend / tClicks : 0,
+                    ...t.metrics
+                };
+            }).sort((a, b) => a.date.localeCompare(b.date));
         }
 
         return row;

@@ -77,7 +77,21 @@ document.addEventListener("DOMContentLoaded", function () {
         });
 
         // 4. Determine Columns
-        let defaultCols = ["name", "adsCount", "spend", "revenue", "roas"];
+        // 4. Determine Columns
+        let defaultCols = ["name", "adsCount"];
+        if (processedRows.length > 0) {
+          // Include all available keys except 'name', 'adsCount', 'timeseries' and 'rawAds'
+          // This grabs both calculated metrics (spend, roas) and dist columns
+          const firstRow = processedRows[0];
+          const dynamicKeys = Object.keys(firstRow).filter(k =>
+            !["name", "adsCount", "timeseries", "rawAds"].includes(k)
+          );
+          defaultCols.push(...dynamicKeys);
+        } else {
+          // Fallback if no data
+          defaultCols.push("spend", "revenue", "roas", "ctr", "cpc");
+        }
+
         if (fieldsParam) {
           defaultCols = ["name", ...fieldsParam.split(",").map(s => s.trim())];
         }
