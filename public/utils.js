@@ -318,3 +318,21 @@ export function processAds(ads, { groupBy, filters = {}, timeseries = true, colu
     });
 }
 
+
+/**
+ * Sort rows by key (handles Numbers and Strings)
+ */
+export function sortRows(rows, key, dir) {
+    return rows.sort((a, b) => {
+        const A = a[key] ?? 0;
+        const B = b[key] ?? 0;
+
+        const isStr = typeof A === 'string' || typeof B === 'string';
+        if (isStr) {
+            const sA = String(A).toLowerCase();
+            const sB = String(B).toLowerCase();
+            return dir === "asc" ? sA.localeCompare(sB) : sB.localeCompare(sA);
+        }
+        return dir === "asc" ? A - B : B - A;
+    });
+}

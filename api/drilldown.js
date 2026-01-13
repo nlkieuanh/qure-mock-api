@@ -4,7 +4,7 @@ export default function handler(req, res) {
    UNIVERSAL DRILLDOWN MODULE FOR WEBFLOW
    Refactored for Client-Side Aggregation (Using shared utils.js)
    ============================================================ */
-import { resolveValue, processAds, pretty, format } from "../utils.js";
+import { resolveValue, processAds, pretty, format, sortRows } from "../utils.js";
 
 document.addEventListener("DOMContentLoaded", function () {
 
@@ -112,12 +112,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const { key, dir } = this.sort;
       if (!key) return;
 
-      this.data.rows.sort((a, b) => {
-        const A = a[key] ?? 0;
-        const B = b[key] ?? 0;
-        if (typeof A === 'string') return dir === "asc" ? A.localeCompare(B) : B.localeCompare(A);
-        return dir === "asc" ? A - B : B - A;
-      });
+      sortRows(this.data.rows, key, dir);
     }
 
     attachRowEvents() {

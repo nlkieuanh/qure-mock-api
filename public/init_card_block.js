@@ -1,5 +1,5 @@
 
-import { processAds, pretty, format } from "./utils.js";
+import { processAds, pretty, format, sortRows } from "./utils.js";
 
 document.addEventListener("DOMContentLoaded", function () {
 
@@ -202,11 +202,7 @@ document.addEventListener("DOMContentLoaded", function () {
         sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
       }
 
-      tableView.sort((a, b) => {
-        const A = a[col] ?? 0;
-        const B = b[col] ?? 0;
-        return sortState.dir === "asc" ? A - B : B - A;
-      });
+      sortRows(tableView, col, sortState.dir);
 
       renderTable(columns, tableView);
       updateChart();
