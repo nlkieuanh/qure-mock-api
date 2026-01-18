@@ -321,7 +321,11 @@
             let ads = [];
             if (Array.isArray(json)) {
                 ads = json;
+            } else if (json.data && Array.isArray(json.data)) {
+                // Case: { code: 200, data: [...] }
+                ads = json.data;
             } else if (json.data && Array.isArray(json.data.results)) {
+                // Case: { data: { results: [...] } }
                 ads = json.data.results;
             } else if (json.results && Array.isArray(json.results)) {
                 ads = json.results;
