@@ -305,7 +305,15 @@
         if (window._globalAdCache) return window._globalAdCache;
 
         const baseUrl = "https://api.foresightiq.ai/";
-        const member = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
+        // Security: Get member ID from the script tag attribute or global config
+        const scriptTag = document.currentScript || document.querySelector('script[src*="bundled_drilldown.js"]');
+        const member = scriptTag?.getAttribute("data-member") || window.FS_MEMBER_ID;
+
+        if (!member) {
+            console.error("[Configuration] Missing 'data-member' attribute on script tag.");
+            return [];
+        }
+
         const url = new URL("api/advertising/product-combination", baseUrl);
         url.searchParams.set("member", member);
 
@@ -315,7 +323,7 @@
         try {
             const res = await fetch(url.toString());
             const json = await res.json();
-            console.log("[Bundled Fetch] Raw API Response:", json);
+            // console.log("[Bundled Fetch] Raw API Response:", json);
 
             // Normalize response: Expect an array of ads
             // If API returns { data: { results: [...] } }, normalize it
