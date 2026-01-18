@@ -315,6 +315,7 @@
         try {
             const res = await fetch(url.toString());
             const json = await res.json();
+            console.log("[Bundled Fetch] Raw API Response:", json);
 
             // Normalize response: Expect an array of ads
             // If API returns { data: { results: [...] } }, normalize it
