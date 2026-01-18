@@ -307,7 +307,7 @@
         const baseUrl = "https://api.foresightiq.ai/";
         const member = "mem_cmizn6pdk0dmx0ssvf5bc05hw";
         const url = new URL("api/advertising/product-combination", baseUrl);
-        url.searchParams.set("memberId", member);
+        url.searchParams.set("member", member);
 
         // If needed, remove default limit to get all data for client aggregation
         // url.searchParams.set("limit", 10000); 
